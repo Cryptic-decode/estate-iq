@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthLayout } from '@/components/auth/auth-layout'
 import { AuthHeader } from '@/components/auth/auth-header'
 import { AuthContainer } from '@/components/auth/auth-container'
@@ -10,60 +10,53 @@ import { AuthHero } from '@/components/auth/auth-hero'
 import { AuthCard } from '@/components/auth/auth-card'
 import { AnimatedAuthForm } from '@/components/auth/animated-auth-form'
 
-export default function SignupPage() {
+export default function SignInPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     const supabase = createClient()
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
-      options: {
-        data: {
-          full_name: fullName || undefined,
-        },
-      },
     })
 
-    if (signUpError) {
-      setError(signUpError.message)
+    if (signInError) {
+      setError(signInError.message)
       setLoading(false)
       return
     }
 
-    // Redirect to app - onboarding will handle org creation
-    router.push('/app')
+    const redirectTo = searchParams.get('redirectTo') || '/app'
+    router.push(redirectTo)
     router.refresh()
   }
 
   return (
     <AuthLayout>
-      <AuthHeader authType="signup" />
+      <AuthHeader authType="signin" />
       <AuthContainer
-        hero={<AuthHero authType="signup" />}
+        hero={<AuthHero authType="signin" />}
         form={
           <AuthCard
-            title="Get Started Free"
-            description="Create your account and start managing rent intelligence today"
+            title="Welcome Back"
+            description="Sign in to continue managing your rent intelligence"
           >
             <AnimatedAuthForm
-              type="signup"
+              type="signin"
               email={email}
               setEmail={setEmail}
               password={password}
               setPassword={setPassword}
-              fullName={fullName}
-              setFullName={setFullName}
-              onSubmit={handleSignup}
+              onSubmit={handleSignIn}
               loading={loading}
               error={error}
             />

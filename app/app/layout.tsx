@@ -12,7 +12,7 @@ export default async function AppLayout({
   } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect('/login')
+    redirect('/signin')
   }
 
   return <>{children}</>

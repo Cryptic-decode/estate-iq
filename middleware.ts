@@ -36,14 +36,14 @@ export async function middleware(request: NextRequest) {
   // Protect /app routes - require authentication
   if (request.nextUrl.pathname.startsWith('/app') && !user) {
     const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
+    redirectUrl.pathname = '/signin'
     redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
   // Redirect authenticated users away from auth pages
   if (
-    (request.nextUrl.pathname === '/login' ||
+    (request.nextUrl.pathname === '/signin' ||
       request.nextUrl.pathname === '/signup') &&
     user
   ) {
