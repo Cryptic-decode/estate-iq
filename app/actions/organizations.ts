@@ -4,10 +4,22 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { generateSlug, generateUniqueSlug } from '@/lib/utils/slug'
 
+type OrganizationRef = {
+  id: string
+  name: string
+  slug: string
+}
+
+export type MembershipWithOrganization = {
+  id: string
+  role: string
+  organization: OrganizationRef | null
+}
+
 /**
  * Get user's organization memberships
  */
-export async function getUserMemberships() {
+export async function getUserMemberships(): Promise<MembershipWithOrganization[] | null> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -22,7 +34,7 @@ export async function getUserMemberships() {
     .select(`
       id,
       role,
-      organization:organizations (
+      organization:organizations!memberships_organization_id_fkey (
         id,
         name,
         slug
@@ -36,7 +48,19 @@ export async function getUserMemberships() {
     return null
   }
 
-  return memberships
+  // Supabase nested selects can be typed as an array depending on relationship inference.
+  // Normalize to OrganizationRef | null so the rest of the app has a stable shape.
+  const normalized = (memberships ?? []).map((m) => {
+    const rawOrg = (m as any).organization
+    const organization = Array.isArray(rawOrg) ? rawOrg[0] ?? null : rawOrg ?? null
+    return {
+      id: (m as any).id as string,
+      role: (m as any).role as string,
+      organization: organization as OrganizationRef | null,
+    }
+  })
+
+  return normalized
 }
 
 /**

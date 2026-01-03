@@ -20,8 +20,10 @@ export default async function OnboardingLayout({
   const memberships = await getUserMemberships()
 
   if (memberships && memberships.length > 0) {
-    const firstOrg = memberships[0].organization as { slug: string }
-    redirect(`/app/org/${firstOrg.slug}`)
+    const firstMembership = memberships[0]
+    const slug = firstMembership.organization?.slug
+    if (slug) redirect(`/app/org/${slug}`)
+    // If org data is missing, allow onboarding to proceed
   }
 
   return <>{children}</>

@@ -1,10 +1,10 @@
 'use client'
 
-import { ButtonHTMLAttributes, ReactNode } from 'react'
+import { ReactNode } from 'react'
 import { ArrowRight, Loader2 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, HTMLMotionProps } from 'framer-motion'
 
-interface AuthButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface AuthButtonProps extends Omit<HTMLMotionProps<'button'>, 'children'> {
   loading?: boolean
   children: ReactNode
   variant?: 'signin' | 'signup'

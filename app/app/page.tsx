@@ -21,7 +21,10 @@ export default async function AppPage() {
   }
 
   // If org exists, redirect to first org's dashboard
-  const firstOrg = memberships[0].organization as { slug: string }
-  redirect(`/app/org/${firstOrg.slug}`)
+  const firstMembership = memberships[0]
+  const slug = firstMembership.organization?.slug
+  if (slug) redirect(`/app/org/${slug}`)
+  // Fallback to onboarding if org data is missing
+  redirect('/app/onboarding')
 }
 

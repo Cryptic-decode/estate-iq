@@ -26,21 +26,21 @@ export default async function OrgDashboardPage({
   }
 
   // Find membership for this org
-  const membership = memberships.find(
-    (m) => (m.organization as { slug: string }).slug === slug
-  )
+  const membership = memberships.find((m) => {
+    return m.organization?.slug === slug
+  })
 
   if (!membership) {
     // User doesn't have access to this org, redirect to first org
-    const firstOrg = memberships[0].organization as { slug: string }
-    redirect(`/app/org/${firstOrg.slug}`)
+    const firstMembership = memberships[0]
+    const firstSlug = firstMembership.organization?.slug
+    if (firstSlug) redirect(`/app/org/${firstSlug}`)
+    // Fallback to onboarding if org data is missing
+    redirect('/app/onboarding')
   }
 
-  const organization = membership.organization as {
-    id: string
-    name: string
-    slug: string
-  }
+  const organization = membership.organization
+  if (!organization) redirect('/app/onboarding')
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50">
