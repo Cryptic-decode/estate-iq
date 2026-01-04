@@ -12,7 +12,7 @@ export function Card({ children, hover = false, className = '', ...props }: Card
 
   return (
     <div
-      className={`rounded-lg bg-white p-6 shadow-sm ${hoverStyles} ${className}`}
+      className={`rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 ${hoverStyles} ${className}`}
       {...props}
     >
       {children}
@@ -38,7 +38,7 @@ export interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {
 
 export function CardTitle({ children, className = '', ...props }: CardTitleProps) {
   return (
-    <h3 className={`text-lg font-semibold text-zinc-900 ${className}`} {...props}>
+    <h3 className={`text-lg font-semibold text-zinc-900 dark:text-zinc-50 ${className}`} {...props}>
       {children}
     </h3>
   )
@@ -54,7 +54,7 @@ export function CardDescription({
   ...props
 }: CardDescriptionProps) {
   return (
-    <p className={`text-sm text-zinc-600 ${className}`} {...props}>
+    <p className={`text-sm text-zinc-600 dark:text-zinc-300 ${className}`} {...props}>
       {children}
     </p>
   )

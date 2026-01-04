@@ -395,7 +395,7 @@ export default function HomePage() {
           <div className="mt-8 border-t border-zinc-200 pt-8 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
             <p>&copy; {new Date().getFullYear()} EstateIQ. All rights reserved.</p>
           </div>
-        </div>
+    </div>
       </footer>
     </motion.div>
   )

@@ -102,36 +102,32 @@ export async function createOrganization(formData: FormData) {
   const existingSlugs = existingOrgs?.map((org) => org.slug) || []
   const uniqueSlug = generateUniqueSlug(baseSlug, existingSlugs)
 
-  // Create organization
-  const { data: organization, error: orgError } = await supabase
-    .from('organizations')
-    .insert({
-      name: companyName.trim(),
-      slug: uniqueSlug,
-    })
-    .select()
-    .single()
+  // Use SECURITY DEFINER function to create organization and membership atomically
+  // This bypasses RLS policies and ensures onboarding works reliably
+  const { data: orgId, error: rpcError } = await supabase.rpc('create_organization_for_user', {
+    org_name: companyName.trim(),
+    org_slug: uniqueSlug,
+    user_uuid: user.id,
+  })
 
-  if (orgError) {
-    console.error('Error creating organization:', orgError)
+  if (rpcError || !orgId) {
+    console.error('Error creating organization via RPC:', rpcError)
     return {
-      error: 'Failed to create organization. Please try again.',
+      error: rpcError?.message || 'Failed to create organization. Please try again.',
     }
   }
 
-  // Create OWNER membership
-  const { error: membershipError } = await supabase.from('memberships').insert({
-    user_id: user.id,
-    organization_id: organization.id,
-    role: 'OWNER',
-  })
+  // Fetch the created organization to get the slug for redirect
+  const { data: organization, error: fetchError } = await supabase
+    .from('organizations')
+    .select('slug')
+    .eq('id', orgId)
+    .single()
 
-  if (membershipError) {
-    console.error('Error creating membership:', membershipError)
-    // Clean up organization if membership creation fails
-    await supabase.from('organizations').delete().eq('id', organization.id)
+  if (fetchError || !organization) {
+    console.error('Error fetching created organization:', fetchError)
     return {
-      error: 'Failed to create membership. Please try again.',
+      error: 'Organization created but failed to fetch details. Please refresh the page.',
     }
   }
 

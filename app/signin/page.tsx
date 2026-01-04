@@ -13,7 +13,8 @@ import { AnimatedAuthForm } from '@/components/auth/animated-auth-form'
 function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [email, setEmail] = useState('')
+  const emailFromQuery = (searchParams.get('email') ?? '').trim()
+  const [email, setEmail] = useState(emailFromQuery)
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -15,9 +15,9 @@ const heroContent = {
       'Sign in to continue managing your rent intelligence. Track payments, send reminders, and stay on top of your portfolio.',
   },
   signup: {
-    headline: 'Create rent intelligence in minutes with',
+    headline: 'Start managing your rent portfolio with',
     supportingText:
-      'Join real estate companies managing rent with confidence. Track every payment, never miss a follow-up, and get daily insights.',
+      'Built for real estate companies. Track every payment, automate reminders, and get daily rent intelligence—all in one workspace.',
   },
 }
 

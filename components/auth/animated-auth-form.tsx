@@ -61,12 +61,12 @@ export function AnimatedAuthForm({
             className="h-11 text-base sm:h-12"
           />
           <Input
-            label="Company"
+            label="Company Name"
             type="text"
             required
             value={companyName || ''}
             onChange={(e) => setCompanyName(e.target.value)}
-            placeholder="Acme Corp"
+            placeholder="Acme Real Estate"
             disabled={loading}
             autoComplete="organization"
             className="h-11 text-base sm:h-12"
@@ -104,7 +104,7 @@ export function AnimatedAuthForm({
 
       {/* Submit Button */}
       <AuthButton variant={type} loading={loading} disabled={loading}>
-        {type === 'signin' ? 'Sign In' : 'Create Account'}
+        {type === 'signin' ? 'Sign In' : 'Create Company Account'}
       </AuthButton>
 
       {/* Secondary Action */}

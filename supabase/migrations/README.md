@@ -8,6 +8,8 @@ This directory contains SQL migration files for the EstateIQ database schema.
 
 2. **002_enable_rls.sql**: Enables Row Level Security (RLS) and creates policies for org isolation.
 
+3. **010_fix_memberships_rls_recursion.sql**: Fixes a self-referential RLS policy issue on `memberships` that can cause “Error fetching memberships” at runtime.
+
 ## How to Apply Migrations
 
 ### Option 1: Supabase Dashboard (Recommended for Development)
@@ -40,6 +42,7 @@ You can also run these migrations directly in your Supabase SQL editor or via ps
 
 1. `001_initial_schema.sql` (must run first)
 2. `002_enable_rls.sql` (depends on tables from 001)
+3. `010_fix_memberships_rls_recursion.sql` (recommended if you hit membership fetch errors)
 
 ## Verification
 
