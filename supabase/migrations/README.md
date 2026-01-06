@@ -42,7 +42,9 @@ You can also run these migrations directly in your Supabase SQL editor or via ps
 
 1. `001_initial_schema.sql` (must run first)
 2. `002_enable_rls.sql` (depends on tables from 001)
-3. `010_fix_memberships_rls_recursion.sql` (recommended if you hit membership fetch errors)
+3. `003_buildings.sql` through `009_payments.sql` (domain tables)
+4. `010_fix_memberships_rls_recursion.sql` (recommended if you hit membership fetch errors)
+5. `011_add_currency_to_organizations.sql` (adds currency support, defaults to NGN)
 
 ## Verification
 

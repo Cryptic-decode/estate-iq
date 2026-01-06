@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getUserMemberships } from '@/app/actions/organizations'
-import { signOut } from '@/app/actions/auth'
+import { AppLayout } from '@/components/app/app-layout'
+import { Building2, Home, Users, FileText, DollarSign, Calendar } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function OrgDashboardPage({
   params,
@@ -43,52 +45,54 @@ export default async function OrgDashboardPage({
   const organization = membership.organization
   if (!organization) redirect('/app/onboarding')
 
+  const quickLinks = [
+    { href: `buildings`, label: 'Buildings', icon: Building2, description: 'Manage your properties' },
+    { href: `units`, label: 'Units', icon: Home, description: 'Track individual units' },
+    { href: `tenants`, label: 'Tenants', icon: Users, description: 'Manage tenant information' },
+    { href: `occupancies`, label: 'Occupancies', icon: FileText, description: 'Assign tenants to units' },
+    { href: `rent-configs`, label: 'Rent Configs', icon: DollarSign, description: 'Define rent schedules' },
+    { href: `rent-periods`, label: 'Rent Periods', icon: Calendar, description: 'Track rent payments' },
+  ]
+
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">EstateIQ</h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-300">{organization.name}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link
-              href={`/app/org/${organization.slug}/buildings`}
-              className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
-            >
-              Buildings
-            </Link>
-            <Link
-              href={`/app/org/${organization.slug}/units`}
-              className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
-            >
-              Units
-            </Link>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-      <main className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+    <AppLayout orgSlug={slug} orgName={organization.name} userRole={membership.role}>
+      <div className="mx-auto w-full max-w-7xl px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             Welcome to {organization.name}
-          </h2>
+          </h1>
           <p className="mt-2 text-zinc-600 dark:text-zinc-300">
-            Your rent intelligence dashboard (coming soon)
+            Your rent intelligence dashboard
           </p>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             Role: {membership.role}
           </p>
         </div>
-      </main>
-    </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {quickLinks.map((link) => {
+            const Icon = link.icon
+            return (
+              <Link
+                key={link.href}
+                href={`/app/org/${slug}/${link.href}`}
+                className="group"
+              >
+                <Card hover className="h-full transition-all group-hover:shadow-md">
+                  <CardHeader>
+                    <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+                      <Icon className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
+                    </div>
+                    <CardTitle>{link.label}</CardTitle>
+                    <CardDescription>{link.description}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+    </AppLayout>
   )
 }
 

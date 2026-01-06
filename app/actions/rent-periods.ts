@@ -255,6 +255,152 @@ export async function updateRentPeriodStatus(
 }
 
 /**
+ * Generate the next rent period for a rent config
+ * Calculates period dates based on cycle and due_day, starting from the last period or occupancy start date
+ */
+export async function generateNextRentPeriod(
+  orgSlug: string,
+  rentConfigId: string
+): Promise<{ data: RentPeriod | null; error: string | null }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { data: null, error: 'Not authenticated' }
+  }
+
+  const orgResult = await getOrgFromSlug(orgSlug)
+  if ('error' in orgResult) {
+    return { data: null, error: orgResult.error }
+  }
+
+  // Validate role: OWNER, MANAGER, or OPS can generate
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+    return { data: null, error: 'Insufficient permissions' }
+  }
+
+  // Fetch rent config
+  const { data: rentConfig, error: rentConfigError } = await supabase
+    .from('rent_configs')
+    .select('id, organization_id, occupancy_id, cycle, due_day')
+    .eq('id', rentConfigId)
+    .eq('organization_id', orgResult.organizationId)
+    .single()
+
+  if (rentConfigError || !rentConfig) {
+    return { data: null, error: 'Rent config not found or does not belong to this organization' }
+  }
+
+  // Fetch occupancy details
+  const { data: occupancy, error: occupancyError } = await supabase
+    .from('occupancies')
+    .select('active_from, active_to')
+    .eq('id', rentConfig.occupancy_id)
+    .eq('organization_id', orgResult.organizationId)
+    .single()
+
+  if (occupancyError || !occupancy) {
+    return { data: null, error: 'Occupancy not found for this rent config' }
+  }
+
+  // Find the last period for this rent config to determine the next period start
+  const { data: lastPeriod } = await supabase
+    .from('rent_periods')
+    .select('period_end, due_date')
+    .eq('rent_config_id', rentConfigId)
+    .eq('organization_id', orgResult.organizationId)
+    .order('period_end', { ascending: false })
+    .limit(1)
+    .single()
+
+  // Determine period start date
+  let periodStart: Date
+  if (lastPeriod?.period_end) {
+    // Start from day after last period ends
+    periodStart = new Date(lastPeriod.period_end)
+    periodStart.setDate(periodStart.getDate() + 1)
+  } else {
+    // First period: start from occupancy active_from
+    periodStart = new Date(occupancy.active_from)
+  }
+
+  // Check if occupancy is still active
+  const occupancyEnd = occupancy.active_to ? new Date(occupancy.active_to) : null
+  if (occupancyEnd && periodStart > occupancyEnd) {
+    return { data: null, error: 'Cannot generate period: occupancy has ended' }
+  }
+
+  // Calculate period end based on cycle
+  const periodEnd = new Date(periodStart)
+  switch (rentConfig.cycle) {
+    case 'WEEKLY':
+      periodEnd.setDate(periodEnd.getDate() + 6) // 7 days total (start + 6 more)
+      break
+    case 'MONTHLY': {
+      // Move to next month, then go back one day to get last day of current month
+      const nextMonth = new Date(periodStart)
+      nextMonth.setMonth(nextMonth.getMonth() + 1)
+      nextMonth.setDate(0) // Last day of the month before nextMonth
+      periodEnd.setTime(nextMonth.getTime())
+      break
+    }
+    case 'QUARTERLY': {
+      const nextQuarter = new Date(periodStart)
+      nextQuarter.setMonth(nextQuarter.getMonth() + 3)
+      nextQuarter.setDate(0) // Last day of the month before nextQuarter
+      periodEnd.setTime(nextQuarter.getTime())
+      break
+    }
+    case 'YEARLY': {
+      const nextYear = new Date(periodStart)
+      nextYear.setFullYear(nextYear.getFullYear() + 1)
+      nextYear.setDate(0) // Last day of the month before nextYear
+      periodEnd.setTime(nextYear.getTime())
+      break
+    }
+  }
+
+  // Ensure period doesn't extend beyond occupancy end
+  if (occupancyEnd && periodEnd > occupancyEnd) {
+    periodEnd.setTime(occupancyEnd.getTime())
+  }
+
+  // Calculate due date: due_day of the period start month/year
+  const dueDate = new Date(periodStart.getFullYear(), periodStart.getMonth(), rentConfig.due_day)
+
+  // If due_day is before period start, move to next month
+  if (dueDate < periodStart) {
+    dueDate.setMonth(dueDate.getMonth() + 1)
+    // Handle edge case where due_day doesn't exist in next month (e.g., Feb 31)
+    const lastDayOfMonth = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate()
+    dueDate.setDate(Math.min(rentConfig.due_day, lastDayOfMonth))
+  }
+
+  // Create the rent period
+  const { data: rentPeriod, error } = await supabase
+    .from('rent_periods')
+    .insert({
+      organization_id: orgResult.organizationId,
+      rent_config_id: rentConfigId,
+      period_start: periodStart.toISOString().split('T')[0],
+      period_end: periodEnd.toISOString().split('T')[0],
+      due_date: dueDate.toISOString().split('T')[0],
+      status: 'DUE',
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error generating rent period:', error)
+    return { data: null, error: 'Failed to generate rent period' }
+  }
+
+  return { data: rentPeriod as RentPeriod, error: null }
+}
+
+/**
  * Update rent period dates (period_start, period_end, due_date)
  */
 export async function updateRentPeriodDates(

@@ -76,3 +76,6 @@ Notes:
 - `docs/DESIGN_GUIDELINES.md`
 - `docs/DATABASE_SCHEMA.md`
 - `docs/saas-multi-tenancy.md`
+- `docs/DEVELOPMENT_PHASES.md`
+- `docs/END_TO_END_FLOW.md`
+- `docs/EMAIL_TEMPLATES.md`

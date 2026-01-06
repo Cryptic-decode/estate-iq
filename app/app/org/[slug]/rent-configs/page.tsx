@@ -1,12 +1,15 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getUserMemberships } from '@/app/actions/organizations'
+import { getUserMemberships, getOrganizationBySlug } from '@/app/actions/organizations'
+import { listRentConfigs } from '@/app/actions/rent-configs'
+import { listOccupancies } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
+import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
-import { UnitsManager } from '@/components/app/units/units-manager'
+import { RentConfigsManager } from '@/components/app/rent-configs/rent-configs-manager'
 import { AppLayout } from '@/components/app/app-layout'
 
-export default async function UnitsPage({
+export default async function RentConfigsPage({
   params,
 }: {
   params: Promise<{ slug: string }>
@@ -30,17 +33,27 @@ export default async function UnitsPage({
   }
 
   const orgName = membership.organization.name
-  const [unitsRes, buildingsRes] = await Promise.all([
+  const [rentConfigsRes, occupanciesRes, unitsRes, tenantsRes, buildingsRes, orgRes] = await Promise.all([
+    listRentConfigs(slug),
+    listOccupancies(slug),
     listUnits(slug),
+    listTenants(slug),
     listBuildings(slug),
+    getOrganizationBySlug(slug),
   ])
 
+  const currency = orgRes.data?.currency || 'NGN'
+
   return (
-    <AppLayout orgSlug={slug} orgName={orgName} currentPath="units" userRole={membership.role}>
-      <UnitsManager
+    <AppLayout orgSlug={slug} orgName={orgName} currentPath="rent-configs" userRole={membership.role}>
+      <RentConfigsManager
         orgSlug={slug}
         orgName={orgName}
+        currency={currency}
+        initialRentConfigs={rentConfigsRes.data ?? []}
+        initialOccupancies={occupanciesRes.data ?? []}
         initialUnits={unitsRes.data ?? []}
+        initialTenants={tenantsRes.data ?? []}
         initialBuildings={buildingsRes.data ?? []}
       />
     </AppLayout>

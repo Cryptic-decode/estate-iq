@@ -8,6 +8,7 @@ type OrganizationRef = {
   id: string
   name: string
   slug: string
+  currency?: string
 }
 
 export type MembershipWithOrganization = {
@@ -37,7 +38,8 @@ export async function getUserMemberships(): Promise<MembershipWithOrganization[]
       organization:organizations!memberships_organization_id_fkey (
         id,
         name,
-        slug
+        slug,
+        currency
       )
     `)
     .eq('user_id', user.id)
@@ -133,5 +135,94 @@ export async function createOrganization(formData: FormData) {
 
   // Redirect to org dashboard
   redirect(`/app/org/${organization.slug}`)
+}
+
+/**
+ * Get organization details by slug (including currency)
+ */
+export async function getOrganizationBySlug(orgSlug: string): Promise<{
+  data: { id: string; name: string; slug: string; currency: string } | null
+  error: string | null
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { data: null, error: 'Not authenticated' }
+  }
+
+  const memberships = await getUserMemberships()
+  if (!memberships || memberships.length === 0) {
+    return { data: null, error: 'No organization memberships found' }
+  }
+
+  const membership = memberships.find((m) => m.organization?.slug === orgSlug)
+  if (!membership || !membership.organization) {
+    return { data: null, error: 'Organization not found or access denied' }
+  }
+
+  const { data: organization, error } = await supabase
+    .from('organizations')
+    .select('id, name, slug, currency')
+    .eq('id', membership.organization.id)
+    .single()
+
+  if (error) {
+    console.error('Error fetching organization:', error)
+    return { data: null, error: 'Failed to fetch organization' }
+  }
+
+  return { data: organization, error: null }
+}
+
+/**
+ * Update organization currency (OWNER only)
+ */
+export async function updateOrganizationCurrency(
+  orgSlug: string,
+  currency: string
+): Promise<{ error: string | null }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const memberships = await getUserMemberships()
+  if (!memberships || memberships.length === 0) {
+    return { error: 'No organization memberships found' }
+  }
+
+  const membership = memberships.find((m) => m.organization?.slug === orgSlug)
+  if (!membership || !membership.organization) {
+    return { error: 'Organization not found or access denied' }
+  }
+
+  // Validate role: Only OWNER can update currency
+  if (membership.role !== 'OWNER') {
+    return { error: 'Only organization owners can update currency settings' }
+  }
+
+  // Validate currency code (3 uppercase letters)
+  if (!currency || !/^[A-Z]{3}$/.test(currency)) {
+    return { error: 'Invalid currency code. Must be a 3-letter ISO 4217 code (e.g., NGN, USD)' }
+  }
+
+  const { error } = await supabase
+    .from('organizations')
+    .update({ currency })
+    .eq('id', membership.organization.id)
+
+  if (error) {
+    console.error('Error updating organization currency:', error)
+    return { error: 'Failed to update currency' }
+  }
+
+  return { error: null }
 }
 

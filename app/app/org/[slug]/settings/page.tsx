@@ -1,12 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getUserMemberships } from '@/app/actions/organizations'
-import { listUnits } from '@/app/actions/units'
-import { listBuildings } from '@/app/actions/buildings'
-import { UnitsManager } from '@/components/app/units/units-manager'
+import { getUserMemberships, getOrganizationBySlug } from '@/app/actions/organizations'
+import { SettingsManager } from '@/components/app/settings/settings-manager'
 import { AppLayout } from '@/components/app/app-layout'
 
-export default async function UnitsPage({
+export default async function SettingsPage({
   params,
 }: {
   params: Promise<{ slug: string }>
@@ -29,19 +27,24 @@ export default async function UnitsPage({
     redirect('/app/onboarding')
   }
 
+  // Only OWNER can access settings
+  if (membership.role !== 'OWNER') {
+    redirect(`/app/org/${slug}`)
+  }
+
   const orgName = membership.organization.name
-  const [unitsRes, buildingsRes] = await Promise.all([
-    listUnits(slug),
-    listBuildings(slug),
-  ])
+  const orgRes = await getOrganizationBySlug(slug)
+
+  if (orgRes.error || !orgRes.data) {
+    redirect(`/app/org/${slug}`)
+  }
 
   return (
-    <AppLayout orgSlug={slug} orgName={orgName} currentPath="units" userRole={membership.role}>
-      <UnitsManager
+    <AppLayout orgSlug={slug} orgName={orgName} currentPath="settings" userRole={membership.role}>
+      <SettingsManager
         orgSlug={slug}
         orgName={orgName}
-        initialUnits={unitsRes.data ?? []}
-        initialBuildings={buildingsRes.data ?? []}
+        initialCurrency={orgRes.data.currency || 'NGN'}
       />
     </AppLayout>
   )

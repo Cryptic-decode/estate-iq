@@ -1,12 +1,11 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUserMemberships } from '@/app/actions/organizations'
-import { listUnits } from '@/app/actions/units'
-import { listBuildings } from '@/app/actions/buildings'
-import { UnitsManager } from '@/components/app/units/units-manager'
+import { listTenants } from '@/app/actions/tenants'
+import { TenantsManager } from '@/components/app/tenants/tenants-manager'
 import { AppLayout } from '@/components/app/app-layout'
 
-export default async function UnitsPage({
+export default async function TenantsPage({
   params,
 }: {
   params: Promise<{ slug: string }>
@@ -30,19 +29,11 @@ export default async function UnitsPage({
   }
 
   const orgName = membership.organization.name
-  const [unitsRes, buildingsRes] = await Promise.all([
-    listUnits(slug),
-    listBuildings(slug),
-  ])
+  const res = await listTenants(slug)
 
   return (
-    <AppLayout orgSlug={slug} orgName={orgName} currentPath="units" userRole={membership.role}>
-      <UnitsManager
-        orgSlug={slug}
-        orgName={orgName}
-        initialUnits={unitsRes.data ?? []}
-        initialBuildings={buildingsRes.data ?? []}
-      />
+    <AppLayout orgSlug={slug} orgName={orgName} currentPath="tenants" userRole={membership.role}>
+      <TenantsManager orgSlug={slug} orgName={orgName} initialTenants={res.data ?? []} />
     </AppLayout>
   )
 }

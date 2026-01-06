@@ -182,27 +182,22 @@ export function UnitsManager({
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-8 flex flex-col gap-2">
-          <div className="flex items-center gap-3 text-zinc-900 dark:text-zinc-50">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <Home className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Units</h1>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                Manage units for <span className="font-medium">{orgName}</span>
-              </p>
-            </div>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Units
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+            Manage units for <span className="font-medium">{orgName}</span>
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
-            <CardHeader className="flex-row items-start justify-between gap-4">
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div className="flex-1">
                 <CardTitle>Your units</CardTitle>
-                <CardDescription>
+                <CardDescription className="mt-1">
                   Manage units across buildings. Filter by building to focus on specific locations.
                 </CardDescription>
               </div>
