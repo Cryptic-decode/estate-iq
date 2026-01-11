@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { BarChart3, PieChart, Shield, ArrowRight } from 'lucide-react'
+import { BarChart3, PieChart, Shield, LineChart, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -13,7 +13,7 @@ export function ReportsHome({ orgSlug, orgName }: { orgSlug: string; orgName: st
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Link href={`/app/org/${orgSlug}/reports/delinquency-aging`} className="block">
           <Card className="h-full transition-all hover:shadow-md cursor-pointer">
             <CardHeader>
@@ -23,6 +23,26 @@ export function ReportsHome({ orgSlug, orgName }: { orgSlug: string; orgName: st
               </div>
               <CardDescription className="mt-1">
                 See unpaid amounts grouped by how long they&apos;ve been overdue (0–7, 8–15, 16–30, 31+ days).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="secondary" size="sm" className="w-full">
+                View report
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={`/app/org/${orgSlug}/reports/collection-rate`} className="block">
+          <Card className="h-full transition-all hover:shadow-md cursor-pointer">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <LineChart className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+                <CardTitle className="text-base">Collection Rate</CardTitle>
+              </div>
+              <CardDescription className="mt-1">
+                Measure rent collected vs. due across a selected date range.
               </CardDescription>
             </CardHeader>
             <CardContent>

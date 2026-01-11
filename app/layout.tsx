@@ -40,15 +40,7 @@ export default function RootLayout({
             toastOptions={{
               classNames: {
                 toast:
-                  'relative pr-10 bg-white text-zinc-900 border-0 shadow-xl rounded-lg dark:bg-zinc-900 dark:text-zinc-50',
-                success:
-                  'bg-white text-zinc-900 border-emerald-200 dark:bg-zinc-900 dark:text-zinc-50 dark:border-emerald-800/50',
-                error:
-                  'bg-white text-zinc-900 border-red-200 dark:bg-zinc-900 dark:text-zinc-50 dark:border-red-800/50',
-                info:
-                  'bg-white text-zinc-900 border-blue-200 dark:bg-zinc-900 dark:text-zinc-50 dark:border-blue-800/50',
-                warning:
-                  'bg-white text-zinc-900 border-amber-200 dark:bg-zinc-900 dark:text-zinc-50 dark:border-amber-800/50',
+                  'relative pr-10 border-0 shadow-xl rounded-lg bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-50',
                 description: 'text-zinc-600 dark:text-zinc-400',
                 actionButton:
                   'bg-zinc-900 text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200',

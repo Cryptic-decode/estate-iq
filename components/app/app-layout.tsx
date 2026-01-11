@@ -65,6 +65,7 @@ const navGroups = [
     items: [
       { href: 'reports', label: 'Overview', icon: BarChart3 },
       { href: 'reports/delinquency-aging', label: 'Overdue Analysis', icon: BarChart3 },
+      { href: 'reports/collection-rate', label: 'Collection Rate', icon: BarChart3 },
       { href: 'reports/building-rollups', label: 'Building Rollups', icon: PieChart },
       { href: 'reports/audit-trail', label: 'Audit Trail', icon: Shield },
     ],
