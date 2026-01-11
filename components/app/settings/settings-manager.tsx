@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings as SettingsIcon, DollarSign, Save } from 'lucide-react'
+import { Settings as SettingsIcon, Wallet, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { updateOrganizationCurrency, getOrganizationBySlug } from '@/app/actions/organizations'
@@ -88,7 +88,7 @@ export function SettingsManager({
                 className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
               >
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
+                  <Wallet className="h-4 w-4" />
                   Currency
                 </div>
               </label>

@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type Occupancy = {
   id: string
@@ -20,35 +19,6 @@ type OccupancyFormData = {
   tenant_id: string
   active_from: string // ISO date string
   active_to?: string | null // ISO date string or null
-}
-
-/**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
 }
 
 /**
@@ -70,15 +40,13 @@ export async function listOccupancies(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   let query = supabase
     .from('occupancies')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (filters?.unitId) {
     query = query.eq('unit_id', filters.unitId)
@@ -114,13 +82,11 @@ export async function createOccupancy(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -151,7 +117,7 @@ export async function createOccupancy(
     .from('units')
     .select('id, organization_id')
     .eq('id', formData.unit_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (unitError || !unit) {
@@ -163,7 +129,7 @@ export async function createOccupancy(
     .from('tenants')
     .select('id, organization_id')
     .eq('id', formData.tenant_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (tenantError || !tenant) {
@@ -173,7 +139,7 @@ export async function createOccupancy(
   const { data: occupancy, error } = await supabase
     .from('occupancies')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       unit_id: formData.unit_id,
       tenant_id: formData.tenant_id,
       active_from: formData.active_from,
@@ -207,13 +173,11 @@ export async function updateOccupancy(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -244,7 +208,7 @@ export async function updateOccupancy(
     .from('occupancies')
     .select('id, organization_id')
     .eq('id', occupancyId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (occupancyError || !existingOccupancy) {
@@ -256,7 +220,7 @@ export async function updateOccupancy(
     .from('units')
     .select('id, organization_id')
     .eq('id', formData.unit_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (unitError || !unit) {
@@ -268,7 +232,7 @@ export async function updateOccupancy(
     .from('tenants')
     .select('id, organization_id')
     .eq('id', formData.tenant_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (tenantError || !tenant) {
@@ -284,7 +248,7 @@ export async function updateOccupancy(
       active_to: formData.active_to || null,
     })
     .eq('id', occupancyId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -312,13 +276,11 @@ export async function deleteOccupancy(
     return { error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { error: orgRes.error }
 
   // Validate role: Only OWNER can delete
-  if (orgResult.role !== 'OWNER') {
+  if (orgRes.data.role !== 'OWNER') {
     return { error: 'Only organization owners can delete occupancies' }
   }
 
@@ -327,7 +289,7 @@ export async function deleteOccupancy(
     .from('occupancies')
     .select('id, organization_id')
     .eq('id', occupancyId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (occupancyError || !existingOccupancy) {
@@ -338,7 +300,7 @@ export async function deleteOccupancy(
     .from('occupancies')
     .delete()
     .eq('id', occupancyId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (error) {
     console.error('Error deleting occupancy:', error)

@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type Building = {
   id: string
@@ -16,35 +15,6 @@ type Building = {
 type BuildingFormData = {
   name: string
   address?: string
-}
-
-/**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
 }
 
 /**
@@ -63,15 +33,13 @@ export async function listBuildings(orgSlug: string): Promise<{
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   const { data: buildings, error } = await supabase
     .from('buildings')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .order('name', { ascending: true })
 
   if (error) {
@@ -98,13 +66,11 @@ export async function createBuilding(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -116,7 +82,7 @@ export async function createBuilding(
   const { data: building, error } = await supabase
     .from('buildings')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       name: formData.name.trim(),
       address: formData.address?.trim() || null,
     })
@@ -148,13 +114,11 @@ export async function updateBuilding(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -168,7 +132,7 @@ export async function updateBuilding(
     .from('buildings')
     .select('id, organization_id')
     .eq('id', buildingId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (fetchError || !existingBuilding) {
@@ -182,7 +146,7 @@ export async function updateBuilding(
       address: formData.address?.trim() || null,
     })
     .eq('id', buildingId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -210,13 +174,11 @@ export async function deleteBuilding(
     return { error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { error: orgRes.error }
 
   // Validate role: Only OWNER can delete
-  if (orgResult.role !== 'OWNER') {
+  if (orgRes.data.role !== 'OWNER') {
     return { error: 'Only organization owners can delete buildings' }
   }
 
@@ -225,7 +187,7 @@ export async function deleteBuilding(
     .from('buildings')
     .select('id, organization_id')
     .eq('id', buildingId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (fetchError || !existingBuilding) {
@@ -236,7 +198,7 @@ export async function deleteBuilding(
     .from('buildings')
     .delete()
     .eq('id', buildingId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (error) {
     console.error('Error deleting building:', error)

@@ -1,6 +1,15 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * Middleware: Cookie refresh only
+ *
+ * This middleware ONLY refreshes Supabase auth cookies to ensure Server Components
+ * and Server Actions see the latest session. It does NOT handle auth checks or redirects.
+ *
+ * Auth protection and redirects are handled by Server Components (e.g., app/app/layout.tsx)
+ * to avoid race conditions and "bounce" issues.
+ */
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -15,12 +24,27 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({
-            request,
+          // Update the request headers so downstream Server Components see refreshed cookies
+          const cookieMap = new Map(request.cookies.getAll().map((c) => [c.name, c.value]))
+          cookiesToSet.forEach(({ name, value }) => {
+            cookieMap.set(name, value)
           })
+
+          const newHeaders = new Headers(request.headers)
+          newHeaders.set(
+            'cookie',
+            Array.from(cookieMap.entries())
+              .map(([name, value]) => `${name}=${value}`)
+              .join('; ')
+          )
+
+          supabaseResponse = NextResponse.next({
+            request: {
+              headers: newHeaders,
+            },
+          })
+
+          // Set cookies on the response
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -29,26 +53,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Protect /app routes - require authentication
-  if (request.nextUrl.pathname.startsWith('/app') && !user) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/signin'
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // Redirect authenticated users away from auth pages
-  if (
-    (request.nextUrl.pathname === '/signin' ||
-      request.nextUrl.pathname === '/signup') &&
-    user
-  ) {
-    return NextResponse.redirect(new URL('/app', request.url))
-  }
+  // Call getUser() to trigger cookie refresh if needed
+  // We don't use the result - Server Components handle auth checks
+  await supabase.auth.getUser()
 
   return supabaseResponse
 }

@@ -8,4 +8,7 @@ export {
   CardContent,
   type CardProps,
 } from './card'
+export { ConfirmDialog } from './confirm-dialog'
+export { Skeleton, type SkeletonProps } from './skeleton'
+export { Spinner, type SpinnerProps } from './spinner'
 

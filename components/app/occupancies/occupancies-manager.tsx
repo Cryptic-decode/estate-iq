@@ -3,8 +3,11 @@
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FileText, Home, Users, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
+import { toast } from 'sonner'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createOccupancy, deleteOccupancy, listOccupancies, updateOccupancy } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
@@ -59,6 +62,7 @@ export function OccupanciesManager({
   initialBuildings: Building[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [occupancies, setOccupancies] = useState<Occupancy[]>(initialOccupancies)
   const [units, setUnits] = useState<Unit[]>(initialUnits)
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
@@ -74,6 +78,10 @@ export function OccupanciesManager({
   const [activeFrom, setActiveFrom] = useState('')
   const [activeTo, setActiveTo] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; occupancy: Occupancy | null }>({
+    open: false,
+    occupancy: null,
+  })
 
   // Filter occupancies
   const filteredOccupancies = useMemo(() => {
@@ -120,32 +128,30 @@ export function OccupanciesManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
-      const filters: { unitId?: string; tenantId?: string } = {}
-      if (filterUnitId) filters.unitId = filterUnitId
-      if (filterTenantId) filters.tenantId = filterTenantId
-
       const [occupanciesRes, unitsRes, tenantsRes, buildingsRes] = await Promise.all([
-        listOccupancies(orgSlug, Object.keys(filters).length > 0 ? filters : undefined),
+        listOccupancies(orgSlug),
         listUnits(orgSlug),
         listTenants(orgSlug),
         listBuildings(orgSlug),
       ])
 
+      setIsLoading(false)
       if (occupanciesRes.error) {
-        setError(occupanciesRes.error)
+        toast.error(occupanciesRes.error)
         return
       }
       if (unitsRes.error) {
-        setError(unitsRes.error)
+        toast.error(unitsRes.error)
         return
       }
       if (tenantsRes.error) {
-        setError(tenantsRes.error)
+        toast.error(tenantsRes.error)
         return
       }
       if (buildingsRes.error) {
-        setError(buildingsRes.error)
+        toast.error(buildingsRes.error)
         return
       }
 
@@ -158,8 +164,7 @@ export function OccupanciesManager({
 
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterUnitId, filterTenantId])
+  }, [])
 
   const onSubmit = () => {
     setError(null)
@@ -193,16 +198,21 @@ export function OccupanciesManager({
           active_to: activeTo.trim() || null,
         })
         if (res.error) {
-          setError(res.error)
+          toast.error(res.error)
           return
         }
+        const unitName = getUnitName(unitId.trim())
+        const tenantName = getTenantName(tenantId.trim())
         resetForm()
         refresh()
+        toast.success('Occupancy created!', {
+          description: `${tenantName} is now assigned to ${unitName}. Next: create a rent config for this occupancy.`,
+        })
         return
       }
 
       if (!editingId) {
-        setError('No occupancy selected to edit.')
+        toast.error('No occupancy selected to edit.')
         return
       }
 
@@ -213,11 +223,12 @@ export function OccupanciesManager({
         active_to: activeTo.trim() || null,
       })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       resetForm()
       refresh()
+      toast.success('Occupancy updated successfully.')
     })
   }
 
@@ -232,22 +243,26 @@ export function OccupanciesManager({
   }
 
   const onDelete = (o: Occupancy) => {
+    setDeleteDialog({ open: true, occupancy: o })
+  }
+
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.occupancy) return
+
+    const o = deleteDialog.occupancy
     const unitName = getUnitName(o.unit_id)
     const tenantName = getTenantName(o.tenant_id)
-    const ok = window.confirm(
-      `Delete occupancy for ${tenantName} in ${unitName}? This will remove the lease assignment.`
-    )
-    if (!ok) return
-
     setError(null)
+    setDeleteDialog({ open: false, occupancy: null })
     startTransition(async () => {
       const res = await deleteOccupancy(orgSlug, o.id)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       if (editingId === o.id) resetForm()
       refresh()
+      toast.success('Occupancy deleted successfully.')
     })
   }
 
@@ -296,7 +311,8 @@ export function OccupanciesManager({
                 variant="secondary"
                 size="sm"
                 onClick={refresh}
-                disabled={isPending}
+                disabled={isPending || isLoading}
+                loading={isLoading}
                 className="shrink-0"
               >
                 Refresh
@@ -309,7 +325,10 @@ export function OccupanciesManager({
                   <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
                   <select
                     value={filterUnitId}
-                    onChange={(e) => setFilterUnitId(e.target.value)}
+                    onChange={(e) => {
+                      setFilterUnitId(e.target.value)
+                      setError(null)
+                    }}
                     className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                     disabled={isPending}
                   >
@@ -323,7 +342,10 @@ export function OccupanciesManager({
                 </div>
                 <select
                   value={filterTenantId}
-                  onChange={(e) => setFilterTenantId(e.target.value)}
+                  onChange={(e) => {
+                    setFilterTenantId(e.target.value)
+                    setError(null)
+                  }}
                   className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                   disabled={isPending}
                 >
@@ -347,13 +369,43 @@ export function OccupanciesManager({
                 )}
               </AnimatePresence>
 
-              {filteredOccupancies.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-4 w-40" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredOccupancies.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                  <FileText className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    {units.length === 0 || tenants.length === 0
+                      ? 'Prerequisites needed'
+                      : 'No occupancies yet'}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
                     {units.length === 0 || tenants.length === 0
                       ? 'Create units and tenants first, then assign them via occupancies.'
-                      : 'No occupancies yet. Create your first occupancy to assign a tenant to a unit.'}
+                      : 'Create your first occupancy to assign a tenant to a unit.'}
                   </p>
+                  {units.length > 0 && tenants.length > 0 && (
+                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                      Use the form on the right to get started.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
@@ -398,7 +450,8 @@ export function OccupanciesManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onEdit(o)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && editingId === o.id}
                           aria-label={`Edit occupancy`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -407,7 +460,8 @@ export function OccupanciesManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onDelete(o)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && deleteDialog.occupancy?.id === o.id}
                           aria-label={`Delete occupancy`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -534,13 +588,10 @@ export function OccupanciesManager({
                       size="md"
                       onClick={onSubmit}
                       disabled={!canSubmit}
+                      loading={isPending}
                       fullWidth
                     >
-                      {isPending
-                        ? 'Saving...'
-                        : mode === 'create'
-                          ? 'Create occupancy'
-                          : 'Save changes'}
+                      {mode === 'create' ? 'Create occupancy' : 'Save changes'}
                     </Button>
                   </div>
 
@@ -561,6 +612,21 @@ export function OccupanciesManager({
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, occupancy: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete occupancy"
+        description={
+          deleteDialog.occupancy
+            ? `Delete occupancy for ${getTenantName(deleteDialog.occupancy.tenant_id)} in ${getUnitName(deleteDialog.occupancy.unit_id)}? This will remove the lease assignment.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   )
 }

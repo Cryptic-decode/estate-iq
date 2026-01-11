@@ -2,9 +2,11 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Calendar, DollarSign, AlertCircle, CheckCircle2, Clock, Filter } from 'lucide-react'
+import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { listRentPeriods, updateRentPeriodStatus, generateNextRentPeriod } from '@/app/actions/rent-periods'
 import { listRentConfigs } from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
@@ -84,6 +86,7 @@ export function RentPeriodsManager({
   initialBuildings: Building[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [rentPeriods, setRentPeriods] = useState<RentPeriod[]>(initialRentPeriods)
   const [rentConfigs, setRentConfigs] = useState<RentConfig[]>(initialRentConfigs)
   const [occupancies, setOccupancies] = useState<Occupancy[]>(initialOccupancies)
@@ -127,18 +130,11 @@ export function RentPeriodsManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
-      const filters: { status?: 'DUE' | 'PAID' | 'OVERDUE'; rentConfigId?: string } = {}
-      if (filterStatus !== 'ALL') {
-        filters.status = filterStatus
-      }
-      if (filterRentConfigId) {
-        filters.rentConfigId = filterRentConfigId
-      }
-
       const [rentPeriodsRes, rentConfigsRes, occupanciesRes, unitsRes, tenantsRes, buildingsRes] =
         await Promise.all([
-          listRentPeriods(orgSlug, Object.keys(filters).length > 0 ? filters : undefined),
+          listRentPeriods(orgSlug),
           listRentConfigs(orgSlug),
           listOccupancies(orgSlug),
           listUnits(orgSlug),
@@ -146,28 +142,29 @@ export function RentPeriodsManager({
           listBuildings(orgSlug),
         ])
 
+      setIsLoading(false)
       if (rentPeriodsRes.error) {
-        setError(rentPeriodsRes.error)
+        toast.error(rentPeriodsRes.error)
         return
       }
       if (rentConfigsRes.error) {
-        setError(rentConfigsRes.error)
+        toast.error(rentConfigsRes.error)
         return
       }
       if (occupanciesRes.error) {
-        setError(occupanciesRes.error)
+        toast.error(occupanciesRes.error)
         return
       }
       if (unitsRes.error) {
-        setError(unitsRes.error)
+        toast.error(unitsRes.error)
         return
       }
       if (tenantsRes.error) {
-        setError(tenantsRes.error)
+        toast.error(tenantsRes.error)
         return
       }
       if (buildingsRes.error) {
-        setError(buildingsRes.error)
+        toast.error(buildingsRes.error)
         return
       }
 
@@ -182,24 +179,24 @@ export function RentPeriodsManager({
 
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, filterRentConfigId])
+  }, [])
 
   const onStatusChange = (rentPeriodId: string, newStatus: 'DUE' | 'PAID' | 'OVERDUE') => {
     setError(null)
     startTransition(async () => {
       const res = await updateRentPeriodStatus(orgSlug, rentPeriodId, { status: newStatus })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       refresh()
+      toast.success(`Rent period marked as ${newStatus.toLowerCase()}.`)
     })
   }
 
   const onGeneratePeriod = () => {
     if (!generateRentConfigId) {
-      setError('Please select a rent config to generate a period for.')
+      toast.error('Please select a rent config to generate a period for.')
       return
     }
 
@@ -207,11 +204,16 @@ export function RentPeriodsManager({
     startTransition(async () => {
       const res = await generateNextRentPeriod(orgSlug, generateRentConfigId)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
+      const rentConfig = getRentConfig(generateRentConfigId)
+      const occupancyLabel = rentConfig ? getOccupancyLabel(rentConfig.occupancy_id) : 'rent config'
       setGenerateRentConfigId('')
       refresh()
+      toast.success(`Rent period generated for ${occupancyLabel}!`, {
+        description: 'You can now track payments for this period.',
+      })
     })
   }
 
@@ -334,7 +336,8 @@ export function RentPeriodsManager({
               variant="secondary"
               size="sm"
               onClick={refresh}
-              disabled={isPending}
+              disabled={isPending || isLoading}
+              loading={isLoading}
               className="shrink-0"
             >
               Refresh
@@ -372,9 +375,10 @@ export function RentPeriodsManager({
                     size="sm"
                     onClick={onGeneratePeriod}
                     disabled={!generateRentConfigId || isPending}
+                    loading={isPending}
                     className="shrink-0"
                   >
-                    {isPending ? 'Generating...' : 'Generate'}
+                    Generate
                   </Button>
                 </div>
               </div>
@@ -385,7 +389,10 @@ export function RentPeriodsManager({
                 <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
                 <select
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                  onChange={(e) => {
+                    setFilterStatus(e.target.value as typeof filterStatus)
+                    setError(null)
+                  }}
                   className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                   disabled={isPending}
                 >
@@ -397,7 +404,10 @@ export function RentPeriodsManager({
               </div>
               <select
                 value={filterRentConfigId}
-                onChange={(e) => setFilterRentConfigId(e.target.value)}
+                onChange={(e) => {
+                  setFilterRentConfigId(e.target.value)
+                  setError(null)
+                }}
                 className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                 disabled={isPending}
               >
@@ -421,17 +431,43 @@ export function RentPeriodsManager({
               )}
             </AnimatePresence>
 
-            {filteredRentPeriods.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                  {rentConfigs.length === 0
-                    ? 'Create rent configs first, then rent periods will be generated.'
-                    : 'No rent periods found. Create rent periods for your rent configs.'}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-                {filteredRentPeriods.map((rp) => {
+            {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-40" />
+                        <Skeleton className="h-4 w-64" />
+                      </div>
+                      <Skeleton className="h-8 w-24 rounded-md" />
+                    </div>
+                  ))}
+                </div>
+              ) : filteredRentPeriods.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
+                  <Calendar className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    {rentConfigs.length === 0
+                      ? 'Prerequisites needed'
+                      : 'No rent periods found'}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    {rentConfigs.length === 0
+                      ? 'Create rent configs first, then rent periods will be generated.'
+                      : 'Generate rent periods for your rent configs to start tracking payments.'}
+                  </p>
+                  {rentConfigs.length > 0 && (
+                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                      Use the "Generate next period" button above to get started.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                  {filteredRentPeriods.map((rp) => {
                   const config = getRentConfig(rp.rent_config_id)
                   return (
                     <div
@@ -448,7 +484,7 @@ export function RentPeriodsManager({
                         <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-zinc-600 dark:text-zinc-300">
                           {config && (
                             <div className="flex items-center gap-2">
-                              <DollarSign className="h-4 w-4 text-zinc-400" />
+                              <Wallet className="h-4 w-4 text-zinc-400" />
                               <span className="font-medium">{formatCurrency(config.amount, currency)}</span>
                             </div>
                           )}
@@ -471,7 +507,8 @@ export function RentPeriodsManager({
                             variant="secondary"
                             size="sm"
                             onClick={() => onStatusChange(rp.id, 'PAID')}
-                            disabled={isPending}
+                            disabled={isPending || isLoading}
+                            loading={isPending}
                             className="text-green-600 hover:text-green-700 dark:text-green-400"
                           >
                             Mark paid
@@ -482,7 +519,8 @@ export function RentPeriodsManager({
                             variant="secondary"
                             size="sm"
                             onClick={() => onStatusChange(rp.id, 'DUE')}
-                            disabled={isPending}
+                            disabled={isPending || isLoading}
+                            loading={isPending}
                           >
                             Mark unpaid
                           </Button>

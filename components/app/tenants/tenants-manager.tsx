@@ -3,9 +3,12 @@
 import { useMemo, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Users, Mail, Phone, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createTenant, deleteTenant, listTenants, updateTenant } from '@/app/actions/tenants'
 
 type Tenant = {
@@ -34,6 +37,7 @@ export function TenantsManager({
   initialTenants: Tenant[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
@@ -43,6 +47,10 @@ export function TenantsManager({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; tenant: Tenant | null }>({
+    open: false,
+    tenant: null,
+  })
 
   const canSubmit = useMemo(
     () => fullName.trim().length > 0 && !isPending,
@@ -59,10 +67,12 @@ export function TenantsManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
       const res = await listTenants(orgSlug)
+      setIsLoading(false)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       setTenants(res.data ?? [])
@@ -88,16 +98,19 @@ export function TenantsManager({
           phone: trimmedPhone || undefined,
         })
         if (res.error) {
-          setError(res.error)
+          toast.error(res.error)
           return
         }
         resetForm()
         refresh()
+        toast.success(`Tenant "${trimmedFullName}" added!`, {
+          description: 'Next: create an occupancy to assign this tenant to a unit.',
+        })
         return
       }
 
       if (!editingId) {
-        setError('No tenant selected to edit.')
+        toast.error('No tenant selected to edit.')
         return
       }
 
@@ -107,11 +120,12 @@ export function TenantsManager({
         phone: trimmedPhone || undefined,
       })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       resetForm()
       refresh()
+      toast.success('Tenant updated successfully.')
     })
   }
 
@@ -125,20 +139,24 @@ export function TenantsManager({
   }
 
   const onDelete = (t: Tenant) => {
-    const ok = window.confirm(
-      `Delete "${t.full_name}"? This will remove the tenant and may affect linked occupancies.`
-    )
-    if (!ok) return
+    setDeleteDialog({ open: true, tenant: t })
+  }
 
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.tenant) return
+
+    const t = deleteDialog.tenant
     setError(null)
+    setDeleteDialog({ open: false, tenant: null })
     startTransition(async () => {
       const res = await deleteTenant(orgSlug, t.id)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       if (editingId === t.id) resetForm()
       refresh()
+      toast.success(`Tenant "${t.full_name}" deleted successfully.`)
     })
   }
 
@@ -168,7 +186,8 @@ export function TenantsManager({
                 variant="secondary"
                 size="sm"
                 onClick={refresh}
-                disabled={isPending}
+                disabled={isPending || isLoading}
+                loading={isLoading}
                 className="shrink-0"
               >
                 Refresh
@@ -186,10 +205,35 @@ export function TenantsManager({
                 )}
               </AnimatePresence>
 
-              {tenants.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : tenants.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                    No tenants yet. Create your first tenant to get started.
+                  <Users className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    No tenants yet
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    Create your first tenant to get started.
+                  </p>
+                  <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                    Use the form on the right to get started.
                   </p>
                 </div>
               ) : (
@@ -234,7 +278,8 @@ export function TenantsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onEdit(t)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && editingId === t.id}
                           aria-label={`Edit ${t.full_name}`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -243,7 +288,8 @@ export function TenantsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onDelete(t)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && deleteDialog.tenant?.id === t.id}
                           aria-label={`Delete ${t.full_name}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -301,13 +347,10 @@ export function TenantsManager({
                   size="md"
                   onClick={onSubmit}
                   disabled={!canSubmit}
+                  loading={isPending}
                   fullWidth
                 >
-                  {isPending
-                    ? 'Saving...'
-                    : mode === 'create'
-                      ? 'Create tenant'
-                      : 'Save changes'}
+                  {mode === 'create' ? 'Create tenant' : 'Save changes'}
                 </Button>
               </div>
 
@@ -326,6 +369,21 @@ export function TenantsManager({
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, tenant: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete tenant"
+        description={
+          deleteDialog.tenant
+            ? `Delete "${deleteDialog.tenant.full_name}"? This will remove the tenant and may affect linked occupancies.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   )
 }

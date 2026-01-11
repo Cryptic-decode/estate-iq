@@ -2,10 +2,13 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { DollarSign, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
+import { Wallet, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createRentConfig, deleteRentConfig, listRentConfigs, updateRentConfig } from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
@@ -79,6 +82,7 @@ export function RentConfigsManager({
   initialBuildings: Building[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [rentConfigs, setRentConfigs] = useState<RentConfig[]>(initialRentConfigs)
   const [occupancies, setOccupancies] = useState<Occupancy[]>(initialOccupancies)
   const [units, setUnits] = useState<Unit[]>(initialUnits)
@@ -94,6 +98,10 @@ export function RentConfigsManager({
   const [cycle, setCycle] = useState<'MONTHLY' | 'WEEKLY' | 'QUARTERLY' | 'YEARLY'>('MONTHLY')
   const [dueDay, setDueDay] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; rentConfig: RentConfig | null }>({
+    open: false,
+    rentConfig: null,
+  })
 
   // Filter rent configs
   const filteredRentConfigs = useMemo(() => {
@@ -139,33 +147,35 @@ export function RentConfigsManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
       const [rentConfigsRes, occupanciesRes, unitsRes, tenantsRes, buildingsRes] = await Promise.all([
-        listRentConfigs(orgSlug, filterOccupancyId || undefined),
+        listRentConfigs(orgSlug),
         listOccupancies(orgSlug),
         listUnits(orgSlug),
         listTenants(orgSlug),
         listBuildings(orgSlug),
       ])
 
+      setIsLoading(false)
       if (rentConfigsRes.error) {
-        setError(rentConfigsRes.error)
+        toast.error(rentConfigsRes.error)
         return
       }
       if (occupanciesRes.error) {
-        setError(occupanciesRes.error)
+        toast.error(occupanciesRes.error)
         return
       }
       if (unitsRes.error) {
-        setError(unitsRes.error)
+        toast.error(unitsRes.error)
         return
       }
       if (tenantsRes.error) {
-        setError(tenantsRes.error)
+        toast.error(tenantsRes.error)
         return
       }
       if (buildingsRes.error) {
-        setError(buildingsRes.error)
+        toast.error(buildingsRes.error)
         return
       }
 
@@ -179,8 +189,7 @@ export function RentConfigsManager({
 
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterOccupancyId])
+  }, [])
 
   const onSubmit = () => {
     setError(null)
@@ -211,16 +220,20 @@ export function RentConfigsManager({
           due_day: dueDayNum,
         })
         if (res.error) {
-          setError(res.error)
+          toast.error(res.error)
           return
         }
+        const occupancyLabel = getOccupancyLabel(occupancyId.trim())
         resetForm()
         refresh()
+        toast.success(`Rent config created for ${occupancyLabel}!`, {
+          description: 'Next: generate rent periods to start tracking payments.',
+        })
         return
       }
 
       if (!editingId) {
-        setError('No rent config selected to edit.')
+        toast.error('No rent config selected to edit.')
         return
       }
 
@@ -231,11 +244,12 @@ export function RentConfigsManager({
         due_day: dueDayNum,
       })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       resetForm()
       refresh()
+      toast.success('Rent config updated successfully.')
     })
   }
 
@@ -250,21 +264,24 @@ export function RentConfigsManager({
   }
 
   const onDelete = (rc: RentConfig) => {
-    const occupancyLabel = getOccupancyLabel(rc.occupancy_id)
-    const ok = window.confirm(
-      `Delete rent config for ${occupancyLabel}? This will remove the rent configuration and may affect linked rent periods.`
-    )
-    if (!ok) return
+    setDeleteDialog({ open: true, rentConfig: rc })
+  }
 
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.rentConfig) return
+
+    const rc = deleteDialog.rentConfig
     setError(null)
+    setDeleteDialog({ open: false, rentConfig: null })
     startTransition(async () => {
       const res = await deleteRentConfig(orgSlug, rc.id)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       if (editingId === rc.id) resetForm()
       refresh()
+      toast.success('Rent config deleted successfully.')
     })
   }
 
@@ -295,7 +312,8 @@ export function RentConfigsManager({
                 variant="secondary"
                 size="sm"
                 onClick={refresh}
-                disabled={isPending}
+                disabled={isPending || isLoading}
+                loading={isLoading}
                 className="shrink-0"
               >
                 Refresh
@@ -307,7 +325,10 @@ export function RentConfigsManager({
                 <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
                 <select
                   value={filterOccupancyId}
-                  onChange={(e) => setFilterOccupancyId(e.target.value)}
+                  onChange={(e) => {
+                    setFilterOccupancyId(e.target.value)
+                    setError(null)
+                  }}
                   className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                   disabled={isPending}
                 >
@@ -331,13 +352,42 @@ export function RentConfigsManager({
                 )}
               </AnimatePresence>
 
-              {filteredRentConfigs.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-40" />
+                        <Skeleton className="h-4 w-56" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredRentConfigs.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                  <Wallet className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    {occupancies.length === 0
+                      ? 'Prerequisites needed'
+                      : 'No rent configs yet'}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
                     {occupancies.length === 0
                       ? 'Create occupancies first, then add rent configs for them.'
-                      : 'No rent configs yet. Create your first rent config to define rent schedules.'}
+                      : 'Create your first rent config to define rent schedules.'}
                   </p>
+                  {occupancies.length > 0 && (
+                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                      Use the form on the right to get started.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
@@ -359,7 +409,7 @@ export function RentConfigsManager({
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-zinc-600 dark:text-zinc-300">
                           <div className="flex items-center gap-2">
-                            <DollarSign className="h-4 w-4 text-zinc-400" />
+                            <Wallet className="h-4 w-4 text-zinc-400" />
                             <span className="font-medium">{formatCurrency(rc.amount, currency)}</span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -376,7 +426,8 @@ export function RentConfigsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onEdit(rc)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && editingId === rc.id}
                           aria-label={`Edit rent config`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -385,7 +436,8 @@ export function RentConfigsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onDelete(rc)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && deleteDialog.rentConfig?.id === rc.id}
                           aria-label={`Delete rent config`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -492,13 +544,10 @@ export function RentConfigsManager({
                       size="md"
                       onClick={onSubmit}
                       disabled={!canSubmit}
+                      loading={isPending}
                       fullWidth
                     >
-                      {isPending
-                        ? 'Saving...'
-                        : mode === 'create'
-                          ? 'Create rent config'
-                          : 'Save changes'}
+                      {mode === 'create' ? 'Create rent config' : 'Save changes'}
                     </Button>
                   </div>
 
@@ -519,6 +568,21 @@ export function RentConfigsManager({
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, rentConfig: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete rent config"
+        description={
+          deleteDialog.rentConfig
+            ? `Delete rent config for ${getOccupancyLabel(deleteDialog.rentConfig.occupancy_id)}? This will remove the rent configuration and may affect linked rent periods.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   )
 }

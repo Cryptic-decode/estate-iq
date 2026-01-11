@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type Tenant = {
   id: string
@@ -21,35 +20,6 @@ type TenantFormData = {
 }
 
 /**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
-}
-
-/**
  * List all tenants for an organization
  */
 export async function listTenants(orgSlug: string): Promise<{
@@ -65,15 +35,13 @@ export async function listTenants(orgSlug: string): Promise<{
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   const { data: tenants, error } = await supabase
     .from('tenants')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .order('full_name', { ascending: true })
 
   if (error) {
@@ -100,13 +68,11 @@ export async function createTenant(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -118,7 +84,7 @@ export async function createTenant(
   const { data: tenant, error } = await supabase
     .from('tenants')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       full_name: formData.full_name.trim(),
       email: formData.email?.trim() || null,
       phone: formData.phone?.trim() || null,
@@ -151,13 +117,11 @@ export async function updateTenant(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -171,7 +135,7 @@ export async function updateTenant(
     .from('tenants')
     .select('id, organization_id')
     .eq('id', tenantId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (fetchError || !existingTenant) {
@@ -186,7 +150,7 @@ export async function updateTenant(
       phone: formData.phone?.trim() || null,
     })
     .eq('id', tenantId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -214,13 +178,11 @@ export async function deleteTenant(
     return { error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { error: orgRes.error }
 
   // Validate role: Only OWNER can delete
-  if (orgResult.role !== 'OWNER') {
+  if (orgRes.data.role !== 'OWNER') {
     return { error: 'Only organization owners can delete tenants' }
   }
 
@@ -229,7 +191,7 @@ export async function deleteTenant(
     .from('tenants')
     .select('id, organization_id')
     .eq('id', tenantId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (fetchError || !existingTenant) {
@@ -240,7 +202,7 @@ export async function deleteTenant(
     .from('tenants')
     .delete()
     .eq('id', tenantId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (error) {
     console.error('Error deleting tenant:', error)

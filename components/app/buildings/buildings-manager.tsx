@@ -3,9 +3,12 @@
 import { useMemo, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Building2, MapPin, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from '@/app/actions/buildings'
 
 type Building = {
@@ -33,6 +36,7 @@ export function BuildingsManager({
   initialBuildings: Building[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings)
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
@@ -41,6 +45,10 @@ export function BuildingsManager({
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; building: Building | null }>({
+    open: false,
+    building: null,
+  })
 
   const canSubmit = useMemo(() => name.trim().length > 0 && !isPending, [name, isPending])
 
@@ -53,10 +61,12 @@ export function BuildingsManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
       const res = await listBuildings(orgSlug)
+      setIsLoading(false)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       setBuildings(res.data ?? [])
@@ -80,16 +90,19 @@ export function BuildingsManager({
           address: trimmedAddress || undefined,
         })
         if (res.error) {
-          setError(res.error)
+          toast.error(res.error)
           return
         }
         resetForm()
         refresh()
+        toast.success(`Building "${trimmedName}" created!`, {
+          description: 'Next: create units for this building.',
+        })
         return
       }
 
       if (!editingId) {
-        setError('No building selected to edit.')
+        toast.error('No building selected to edit.')
         return
       }
 
@@ -98,11 +111,12 @@ export function BuildingsManager({
         address: trimmedAddress || undefined,
       })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       resetForm()
       refresh()
+      toast.success('Building updated successfully.')
     })
   }
 
@@ -115,20 +129,24 @@ export function BuildingsManager({
   }
 
   const onDelete = (b: Building) => {
-    const ok = window.confirm(
-      `Delete "${b.name}"? This will remove the building and may affect linked units.`
-    )
-    if (!ok) return
+    setDeleteDialog({ open: true, building: b })
+  }
 
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.building) return
+
+    const b = deleteDialog.building
     setError(null)
+    setDeleteDialog({ open: false, building: null })
     startTransition(async () => {
       const res = await deleteBuilding(orgSlug, b.id)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       if (editingId === b.id) resetForm()
       refresh()
+      toast.success(`Building "${b.name}" deleted successfully.`)
     })
   }
 
@@ -158,7 +176,8 @@ export function BuildingsManager({
                 variant="secondary"
                 size="sm"
                 onClick={refresh}
-                disabled={isPending}
+                disabled={isPending || isLoading}
+                loading={isLoading}
                 className="shrink-0"
               >
                 Refresh
@@ -176,10 +195,35 @@ export function BuildingsManager({
                 )}
               </AnimatePresence>
 
-              {buildings.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : buildings.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                    No buildings yet. Create your first building to start adding units.
+                  <Building2 className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    No buildings yet
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    Create your first building to start adding units.
+                  </p>
+                  <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                    Use the form on the right to get started.
                   </p>
                 </div>
               ) : (
@@ -213,7 +257,8 @@ export function BuildingsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onEdit(b)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && editingId === b.id}
                           aria-label={`Edit ${b.name}`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -222,7 +267,8 @@ export function BuildingsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onDelete(b)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && deleteDialog.building?.id === b.id}
                           aria-label={`Delete ${b.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -269,13 +315,10 @@ export function BuildingsManager({
                   size="md"
                   onClick={onSubmit}
                   disabled={!canSubmit}
+                  loading={isPending}
                   fullWidth
                 >
-                  {isPending
-                    ? 'Saving...'
-                    : mode === 'create'
-                      ? 'Create building'
-                      : 'Save changes'}
+                  {mode === 'create' ? 'Create building' : 'Save changes'}
                 </Button>
               </div>
 
@@ -294,6 +337,21 @@ export function BuildingsManager({
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, building: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete building"
+        description={
+          deleteDialog.building
+            ? `Delete "${deleteDialog.building.name}"? This will remove the building and may affect linked units.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   )
 }

@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type RentConfig = {
   id: string
@@ -20,35 +19,6 @@ type RentConfigFormData = {
   amount: number
   cycle: 'MONTHLY' | 'WEEKLY' | 'QUARTERLY' | 'YEARLY'
   due_day: number
-}
-
-/**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
 }
 
 /**
@@ -70,15 +40,13 @@ export async function listRentConfigs(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   let query = supabase
     .from('rent_configs')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (occupancyId) {
     query = query.eq('occupancy_id', occupancyId)
@@ -110,13 +78,11 @@ export async function createRentConfig(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -143,7 +109,7 @@ export async function createRentConfig(
     .from('occupancies')
     .select('id, organization_id')
     .eq('id', formData.occupancy_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (occupancyError || !occupancy) {
@@ -153,7 +119,7 @@ export async function createRentConfig(
   const { data: rentConfig, error } = await supabase
     .from('rent_configs')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       occupancy_id: formData.occupancy_id,
       amount: formData.amount,
       cycle: formData.cycle,
@@ -187,13 +153,11 @@ export async function updateRentConfig(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -220,7 +184,7 @@ export async function updateRentConfig(
     .from('rent_configs')
     .select('id, organization_id')
     .eq('id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentConfigError || !existingRentConfig) {
@@ -232,7 +196,7 @@ export async function updateRentConfig(
     .from('occupancies')
     .select('id, organization_id')
     .eq('id', formData.occupancy_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (occupancyError || !occupancy) {
@@ -248,7 +212,7 @@ export async function updateRentConfig(
       due_day: formData.due_day,
     })
     .eq('id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -276,13 +240,11 @@ export async function deleteRentConfig(
     return { error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { error: orgRes.error }
 
   // Validate role: Only OWNER can delete
-  if (orgResult.role !== 'OWNER') {
+  if (orgRes.data.role !== 'OWNER') {
     return { error: 'Only organization owners can delete rent configs' }
   }
 
@@ -291,7 +253,7 @@ export async function deleteRentConfig(
     .from('rent_configs')
     .select('id, organization_id')
     .eq('id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentConfigError || !existingRentConfig) {
@@ -302,7 +264,7 @@ export async function deleteRentConfig(
     .from('rent_configs')
     .delete()
     .eq('id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (error) {
     console.error('Error deleting rent config:', error)

@@ -3,9 +3,12 @@
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Home, Building2, Pencil, Trash2, Filter } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createUnit, deleteUnit, listUnits, updateUnit } from '@/app/actions/units'
 import { listBuildings } from '@/app/actions/buildings'
 
@@ -42,6 +45,7 @@ export function UnitsManager({
   initialBuildings: Building[]
 }) {
   const [isPending, startTransition] = useTransition()
+  const [isLoading, setIsLoading] = useState(false)
   const [units, setUnits] = useState<Unit[]>(initialUnits)
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings)
   const [filterBuildingId, setFilterBuildingId] = useState<string>('')
@@ -52,6 +56,10 @@ export function UnitsManager({
   const [buildingId, setBuildingId] = useState('')
   const [unitNumber, setUnitNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; unit: Unit | null }>({
+    open: false,
+    unit: null,
+  })
 
   // Filter units by building
   const filteredUnits = useMemo(() => {
@@ -79,18 +87,20 @@ export function UnitsManager({
   }
 
   const refresh = () => {
+    setIsLoading(true)
     startTransition(async () => {
       const [unitsRes, buildingsRes] = await Promise.all([
-        listUnits(orgSlug, filterBuildingId || undefined),
+        listUnits(orgSlug),
         listBuildings(orgSlug),
       ])
 
+      setIsLoading(false)
       if (unitsRes.error) {
-        setError(unitsRes.error)
+        toast.error(unitsRes.error)
         return
       }
       if (buildingsRes.error) {
-        setError(buildingsRes.error)
+        toast.error(buildingsRes.error)
         return
       }
 
@@ -101,8 +111,7 @@ export function UnitsManager({
 
   useEffect(() => {
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterBuildingId])
+  }, [])
 
   const onSubmit = () => {
     setError(null)
@@ -126,16 +135,19 @@ export function UnitsManager({
           unit_number: trimmedUnitNumber,
         })
         if (res.error) {
-          setError(res.error)
+          toast.error(res.error)
           return
         }
         resetForm()
         refresh()
+        toast.success(`Unit "${trimmedUnitNumber}" created!`, {
+          description: 'Next: add tenants and create occupancies to assign them to this unit.',
+        })
         return
       }
 
       if (!editingId) {
-        setError('No unit selected to edit.')
+        toast.error('No unit selected to edit.')
         return
       }
 
@@ -144,11 +156,12 @@ export function UnitsManager({
         unit_number: trimmedUnitNumber,
       })
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       resetForm()
       refresh()
+      toast.success('Unit updated successfully.')
     })
   }
 
@@ -161,21 +174,25 @@ export function UnitsManager({
   }
 
   const onDelete = (u: Unit) => {
-    const buildingName = getBuildingName(u.building_id)
-    const ok = window.confirm(
-      `Delete unit "${u.unit_number}" from ${buildingName}? This will remove the unit and may affect linked occupancies.`
-    )
-    if (!ok) return
+    setDeleteDialog({ open: true, unit: u })
+  }
 
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.unit) return
+
+    const u = deleteDialog.unit
+    const buildingName = getBuildingName(u.building_id)
     setError(null)
+    setDeleteDialog({ open: false, unit: null })
     startTransition(async () => {
       const res = await deleteUnit(orgSlug, u.id)
       if (res.error) {
-        setError(res.error)
+        toast.error(res.error)
         return
       }
       if (editingId === u.id) resetForm()
       refresh()
+      toast.success(`Unit "${u.unit_number}" deleted successfully.`)
     })
   }
 
@@ -205,7 +222,8 @@ export function UnitsManager({
                 variant="secondary"
                 size="sm"
                 onClick={refresh}
-                disabled={isPending}
+                disabled={isPending || isLoading}
+                loading={isLoading}
                 className="shrink-0"
               >
                 Refresh
@@ -217,7 +235,10 @@ export function UnitsManager({
                 <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
                 <select
                   value={filterBuildingId}
-                  onChange={(e) => setFilterBuildingId(e.target.value)}
+                  onChange={(e) => {
+                    setFilterBuildingId(e.target.value)
+                    setError(null)
+                  }}
                   className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
                   disabled={isPending}
                 >
@@ -241,15 +262,46 @@ export function UnitsManager({
                 )}
               </AnimatePresence>
 
-              {filteredUnits.length === 0 ? (
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-24" />
+                        <Skeleton className="h-4 w-40" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                        <Skeleton className="h-8 w-8 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredUnits.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                  <Home className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
+                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                     {filterBuildingId
-                      ? 'No units found in this building. Create your first unit to get started.'
+                      ? 'No units in this building'
                       : buildings.length === 0
-                        ? 'No buildings yet. Create a building first, then add units.'
-                        : 'No units yet. Create your first unit to get started.'}
+                        ? 'No buildings yet'
+                        : 'No units yet'}
                   </p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                    {filterBuildingId
+                      ? 'Create your first unit for this building.'
+                      : buildings.length === 0
+                        ? 'Create a building first, then add units.'
+                        : 'Create your first unit to get started.'}
+                  </p>
+                  {buildings.length > 0 && (
+                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                      Use the form on the right to get started.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
@@ -280,7 +332,8 @@ export function UnitsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onEdit(u)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && editingId === u.id}
                           aria-label={`Edit unit ${u.unit_number}`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -289,7 +342,8 @@ export function UnitsManager({
                           variant="secondary"
                           size="sm"
                           onClick={() => onDelete(u)}
-                          disabled={isPending}
+                          disabled={isPending || isLoading}
+                          loading={isPending && deleteDialog.unit?.id === u.id}
                           aria-label={`Delete unit ${u.unit_number}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -358,13 +412,10 @@ export function UnitsManager({
                       size="md"
                       onClick={onSubmit}
                       disabled={!canSubmit}
+                      loading={isPending}
                       fullWidth
                     >
-                      {isPending
-                        ? 'Saving...'
-                        : mode === 'create'
-                          ? 'Create unit'
-                          : 'Save changes'}
+                      {mode === 'create' ? 'Create unit' : 'Save changes'}
                     </Button>
                   </div>
 
@@ -385,6 +436,21 @@ export function UnitsManager({
           </Card>
         </div>
       </motion.div>
+
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, unit: null })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete unit"
+        description={
+          deleteDialog.unit
+            ? `Delete unit "${deleteDialog.unit.unit_number}" from ${getBuildingName(deleteDialog.unit.building_id)}? This will remove the unit and may affect linked occupancies.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   )
 }

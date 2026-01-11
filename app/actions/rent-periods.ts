@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type RentPeriod = {
   id: string
@@ -29,35 +28,6 @@ type RentPeriodStatusUpdate = {
 }
 
 /**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
-}
-
-/**
  * List all rent periods for an organization (with optional filters)
  */
 export async function listRentPeriods(
@@ -80,15 +50,13 @@ export async function listRentPeriods(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   let query = supabase
     .from('rent_periods')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (filters?.rentConfigId) {
     query = query.eq('rent_config_id', filters.rentConfigId)
@@ -128,13 +96,11 @@ export async function createRentPeriod(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -161,7 +127,7 @@ export async function createRentPeriod(
     .from('rent_configs')
     .select('id, organization_id')
     .eq('id', formData.rent_config_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentConfigError || !rentConfig) {
@@ -172,7 +138,7 @@ export async function createRentPeriod(
   const { data: rentPeriod, error } = await supabase
     .from('rent_periods')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       rent_config_id: formData.rent_config_id,
       period_start: formData.period_start,
       period_end: formData.period_end,
@@ -207,13 +173,11 @@ export async function updateRentPeriodStatus(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -228,7 +192,7 @@ export async function updateRentPeriodStatus(
     .from('rent_periods')
     .select('id, organization_id')
     .eq('id', rentPeriodId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentPeriodError || !existingRentPeriod) {
@@ -242,7 +206,7 @@ export async function updateRentPeriodStatus(
       status: statusUpdate.status,
     })
     .eq('id', rentPeriodId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -271,13 +235,11 @@ export async function generateNextRentPeriod(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can generate
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -286,7 +248,7 @@ export async function generateNextRentPeriod(
     .from('rent_configs')
     .select('id, organization_id, occupancy_id, cycle, due_day')
     .eq('id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentConfigError || !rentConfig) {
@@ -298,7 +260,7 @@ export async function generateNextRentPeriod(
     .from('occupancies')
     .select('active_from, active_to')
     .eq('id', rentConfig.occupancy_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (occupancyError || !occupancy) {
@@ -310,7 +272,7 @@ export async function generateNextRentPeriod(
     .from('rent_periods')
     .select('period_end, due_date')
     .eq('rent_config_id', rentConfigId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .order('period_end', { ascending: false })
     .limit(1)
     .single()
@@ -382,7 +344,7 @@ export async function generateNextRentPeriod(
   const { data: rentPeriod, error } = await supabase
     .from('rent_periods')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       rent_config_id: rentConfigId,
       period_start: periodStart.toISOString().split('T')[0],
       period_end: periodEnd.toISOString().split('T')[0],
@@ -421,13 +383,11 @@ export async function updateRentPeriodDates(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
-  }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -436,7 +396,7 @@ export async function updateRentPeriodDates(
     .from('rent_periods')
     .select('*')
     .eq('id', rentPeriodId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentPeriodError || !existingRentPeriod) {
@@ -475,7 +435,7 @@ export async function updateRentPeriodDates(
     .from('rent_periods')
     .update(updateData)
     .eq('id', rentPeriodId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
