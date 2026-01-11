@@ -84,6 +84,19 @@ export function OccupanciesManager({
     occupancy: null,
   })
 
+  // Helper functions (must be defined before useMemo hooks that use them)
+  const getUnitName = (unitId: string) => {
+    const unit = units.find((u) => u.id === unitId)
+    if (!unit) return 'Unknown unit'
+    const building = buildings.find((b) => b.id === unit.building_id)
+    return building ? `${building.name} - Unit ${unit.unit_number}` : `Unit ${unit.unit_number}`
+  }
+
+  const getTenantName = (tenantId: string) => {
+    const tenant = tenants.find((t) => t.id === tenantId)
+    return tenant?.full_name || 'Unknown tenant'
+  }
+
   // Filter occupancies
   const filteredOccupancies = useMemo(() => {
     let filtered = occupancies
@@ -122,19 +135,6 @@ export function OccupanciesManager({
     () => tenants.map((t) => ({ value: t.id, label: t.full_name })),
     [tenants]
   )
-
-  // Helper functions
-  const getUnitName = (unitId: string) => {
-    const unit = units.find((u) => u.id === unitId)
-    if (!unit) return 'Unknown unit'
-    const building = buildings.find((b) => b.id === unit.building_id)
-    return building ? `${building.name} - Unit ${unit.unit_number}` : `Unit ${unit.unit_number}`
-  }
-
-  const getTenantName = (tenantId: string) => {
-    const tenant = tenants.find((t) => t.id === tenantId)
-    return tenant?.full_name || 'Unknown tenant'
-  }
 
   const canSubmit = useMemo(
     () =>

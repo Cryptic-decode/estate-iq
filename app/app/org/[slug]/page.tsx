@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { getUserMemberships } from '@/app/actions/organizations'
 import { getOrgStats } from '@/app/actions/stats'
 import { AppLayout } from '@/components/app/app-layout'
+import { DailyBrief } from '@/components/app/dashboard/daily-brief'
 import { Building2, Home, Users, FileText, Wallet, Calendar, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,8 @@ export default async function OrgDashboardPage({
   const organization = membership.organization
   if (!organization) redirect('/app/onboarding')
 
+  const currency = organization.currency || 'NGN'
+
   // Fetch organization stats
   const statsResult = await getOrgStats(slug)
   const stats = statsResult.data || {
@@ -58,6 +61,14 @@ export default async function OrgDashboardPage({
     rentPeriods: 0,
     overduePeriods: 0,
   }
+
+  const hasSetupGaps =
+    stats.buildings === 0 ||
+    stats.units === 0 ||
+    stats.tenants === 0 ||
+    stats.occupancies === 0 ||
+    stats.rentConfigs === 0 ||
+    stats.rentPeriods === 0
 
   // Generate contextual guidance based on what's missing
   const getGuidanceMessages = () => {
@@ -101,7 +112,8 @@ export default async function OrgDashboardPage({
       })
     }
 
-    if (stats.overduePeriods > 0) {
+    // Avoid duplicating the "overdue" callout when the Daily Brief is present.
+    if (stats.overduePeriods > 0 && stats.rentPeriods === 0) {
       messages.push({
         type: 'warning',
         text: `You have ${stats.overduePeriods} overdue rent period${stats.overduePeriods > 1 ? 's' : ''} that need attention.`,
@@ -155,6 +167,46 @@ export default async function OrgDashboardPage({
           </div>
         </div>
 
+        {/* Quick access */}
+        <div className="mb-8">
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Quick access</div>
+            <div className="hidden text-xs text-zinc-500 dark:text-zinc-400 sm:block">
+              Jump to a section
+            </div>
+          </div>
+          <Card className="p-0">
+            <CardContent className="p-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {quickLinks.map((link) => {
+                  const Icon = link.icon
+                  return (
+                    <Link
+                      key={link.href}
+                      href={`/app/org/${slug}/${link.href}`}
+                      className="group focus:outline-none"
+                    >
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+                            <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-200" />
+                          </div>
+                          <span className="truncate text-xs font-medium text-zinc-700 group-hover:text-zinc-900 dark:text-zinc-200 dark:group-hover:text-zinc-50">
+                            {link.label}
+                          </span>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+                          {link.count}
+                        </span>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Contextual Guidance */}
         {guidanceMessages.length > 0 && (
           <div className="mb-8 space-y-3">
@@ -200,43 +252,21 @@ export default async function OrgDashboardPage({
           </div>
         )}
 
-        {/* Quick links */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {quickLinks.map((link) => {
-            const Icon = link.icon
-            return (
-              <Link
-                key={link.href}
-                href={`/app/org/${slug}/${link.href}`}
-                className="group focus:outline-none"
-              >
-                <Card hover className="h-full p-0 transition-all group-hover:shadow-md">
-                  <CardContent className="flex h-full flex-col gap-3 p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-                        <Icon className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{link.count}</span>
-                        <span className="text-xs font-medium text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-zinc-400 dark:group-hover:text-zinc-200">
-                          Open
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <CardTitle className="text-base">{link.label}</CardTitle>
-                      <CardDescription className="text-sm">{link.description}</CardDescription>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
-        </div>
+        {/* Daily brief (only once rent periods exist, to avoid clutter during setup) */}
+        {stats.rentPeriods > 0 && (
+          <div className="mb-8">
+            <DailyBrief
+              orgSlug={slug}
+              currency={currency}
+              initialOverdueCount={stats.overduePeriods}
+              initialDueTodayCount={0}
+            />
+          </div>
+        )}
 
         {/* Helpful next steps */}
-        <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {(hasSetupGaps || membership.role !== 'OWNER') && (
+          <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card className="p-0">
             <CardContent className="space-y-3 p-6">
               <div>
@@ -283,8 +313,9 @@ export default async function OrgDashboardPage({
               )}
             </CardContent>
           </Card>
-        </div>
-      </div>
+          </div>
+        )}
+    </div>
     </AppLayout>
   )
 }

@@ -219,8 +219,8 @@ export function UnitsManager({
             Units
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Manage units for <span className="font-medium">{orgName}</span>
-          </p>
+                Manage units for <span className="font-medium">{orgName}</span>
+              </p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -251,7 +251,7 @@ export function UnitsManager({
                 <div className="flex-1">
                   <Select
                     options={buildingOptions}
-                    value={filterBuildingId}
+                  value={filterBuildingId}
                     onChange={(v) => {
                       setFilterBuildingId(v)
                       setError(null)
@@ -390,7 +390,7 @@ export function UnitsManager({
                   <Select
                     label="Building"
                     options={formBuildingOptions}
-                    value={buildingId}
+                      value={buildingId}
                     onChange={(v) => setBuildingId(v)}
                     isDisabled={isPending}
                     placeholder="Select a building"

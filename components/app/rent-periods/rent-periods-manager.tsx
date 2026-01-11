@@ -100,7 +100,7 @@ export function RentPeriodsManager({
   const [generateRentConfigId, setGenerateRentConfigId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
-  // Filter rent periods
+  // Filter and sort rent periods (prioritize overdue, then by days_overdue)
   const filteredRentPeriods = useMemo(() => {
     let filtered = rentPeriods
     if (filterStatus !== 'ALL') {
@@ -109,7 +109,17 @@ export function RentPeriodsManager({
     if (filterRentConfigId) {
       filtered = filtered.filter((rp) => rp.rent_config_id === filterRentConfigId)
     }
-    return filtered
+    // Sort: OVERDUE first (by days_overdue desc), then DUE, then PAID
+    return filtered.sort((a, b) => {
+      if (a.status === 'OVERDUE' && b.status !== 'OVERDUE') return -1
+      if (a.status !== 'OVERDUE' && b.status === 'OVERDUE') return 1
+      if (a.status === 'OVERDUE' && b.status === 'OVERDUE') {
+        return b.days_overdue - a.days_overdue // Most overdue first
+      }
+      if (a.status === 'DUE' && b.status === 'PAID') return -1
+      if (a.status === 'PAID' && b.status === 'DUE') return 1
+      return 0
+    })
   }, [rentPeriods, filterStatus, filterRentConfigId])
 
   // Helper functions
@@ -256,10 +266,21 @@ export function RentPeriodsManager({
           </span>
         )
       case 'OVERDUE':
+        // Priority levels: Critical (>30 days), High (15-30 days), Medium (7-14 days), Low (1-6 days)
+        const isCritical = daysOverdue > 30
+        const isHigh = daysOverdue > 14 && daysOverdue <= 30
+        const isMedium = daysOverdue > 7 && daysOverdue <= 14
+        const priorityClass = isCritical
+          ? 'bg-red-600 text-white dark:bg-red-500 dark:text-white'
+          : isHigh
+            ? 'bg-red-500 text-white dark:bg-red-600 dark:text-white'
+            : isMedium
+              ? 'bg-red-400 text-white dark:bg-red-700 dark:text-white'
+              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
         return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${priorityClass}`}>
             <AlertCircle className="h-3 w-3" />
-            Overdue ({daysOverdue} days)
+            {isCritical ? 'Critical' : isHigh ? 'High' : isMedium ? 'Medium' : ''} Overdue ({daysOverdue}d)
           </span>
         )
       case 'DUE':
@@ -488,7 +509,17 @@ export function RentPeriodsManager({
                   return (
                     <div
                       key={rp.id}
-                      className="flex items-start justify-between gap-4 bg-white px-4 py-4 transition-colors hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-900/60"
+                      className={`flex items-start justify-between gap-4 px-4 py-4 transition-colors ${
+                        rp.status === 'OVERDUE'
+                          ? rp.days_overdue > 30
+                            ? 'bg-red-50 border-l-4 border-red-600 dark:bg-red-950/20 dark:border-red-500'
+                            : rp.days_overdue > 14
+                              ? 'bg-red-50/80 border-l-4 border-red-500 dark:bg-red-950/15 dark:border-red-600'
+                              : rp.days_overdue > 7
+                                ? 'bg-red-50/60 border-l-4 border-red-400 dark:bg-red-950/10 dark:border-red-700'
+                                : 'bg-red-50/40 border-l-4 border-red-300 dark:bg-red-950/5 dark:border-red-800'
+                          : 'bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-900/60'
+                      }`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">

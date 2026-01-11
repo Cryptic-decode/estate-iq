@@ -158,8 +158,8 @@ export function BuildingsManager({
             Buildings
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Manage buildings for <span className="font-medium">{orgName}</span>
-          </p>
+                Manage buildings for <span className="font-medium">{orgName}</span>
+              </p>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
