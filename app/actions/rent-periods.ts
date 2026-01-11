@@ -329,15 +329,36 @@ export async function generateNextRentPeriod(
     periodEnd.setTime(occupancyEnd.getTime())
   }
 
-  // Calculate due date: due_day of the period start month/year
-  const dueDate = new Date(periodStart.getFullYear(), periodStart.getMonth(), rentConfig.due_day)
+  // Calculate due date
+  const dueDate = new Date(periodStart)
+  if (rentConfig.cycle === 'WEEKLY') {
+    // For WEEKLY, interpret due_day as weekday:
+    // 1 = Monday ... 7 = Sunday
+    const dueDay = rentConfig.due_day
+    if (dueDay < 1 || dueDay > 7) {
+      return { data: null, error: 'Invalid weekly due day. Must be between 1 (Mon) and 7 (Sun)' }
+    }
 
-  // If due_day is before period start, move to next month
-  if (dueDate < periodStart) {
-    dueDate.setMonth(dueDate.getMonth() + 1)
-    // Handle edge case where due_day doesn't exist in next month (e.g., Feb 31)
-    const lastDayOfMonth = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate()
-    dueDate.setDate(Math.min(rentConfig.due_day, lastDayOfMonth))
+    const jsWeekday = dueDate.getDay() // 0=Sun..6=Sat
+    const current = jsWeekday === 0 ? 7 : jsWeekday // 1=Mon..7=Sun
+    const delta = (dueDay - current + 7) % 7
+    dueDate.setDate(dueDate.getDate() + delta)
+
+    // If occupancy end truncated the week, clamp due date to the period end
+    if (dueDate > periodEnd) {
+      dueDate.setTime(periodEnd.getTime())
+    }
+  } else {
+    // For non-weekly cycles, interpret due_day as "day of month"
+    dueDate.setFullYear(periodStart.getFullYear(), periodStart.getMonth(), rentConfig.due_day)
+
+    // If due_day is before period start, move to next month
+    if (dueDate < periodStart) {
+      dueDate.setMonth(dueDate.getMonth() + 1)
+      // Handle edge case where due_day doesn't exist in next month (e.g., Feb 31)
+      const lastDayOfMonth = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate()
+      dueDate.setDate(Math.min(rentConfig.due_day, lastDayOfMonth))
+    }
   }
 
   // Create the rent period

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createRentConfig, deleteRentConfig, listRentConfigs, updateRentConfig } from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
@@ -61,6 +62,22 @@ const CYCLE_OPTIONS = [
   { value: 'QUARTERLY', label: 'Quarterly' },
   { value: 'YEARLY', label: 'Yearly' },
 ] as const
+
+const WEEKDAY_OPTIONS: SelectOption[] = [
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+  { value: '7', label: 'Sunday' },
+]
+
+const dayOrdinal = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
 
 export function RentConfigsManager({
   orgSlug,
@@ -124,6 +141,29 @@ export function RentConfigsManager({
     return `${tenantLabel} in ${unitLabel}`
   }
 
+  const occupancyOptions: SelectOption[] = useMemo(
+    () =>
+      occupancies.map((o) => ({
+        value: o.id,
+        label: getOccupancyLabel(o.id),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [occupancies, units, tenants, buildings]
+  )
+
+  const cycleOptions: SelectOption[] = useMemo(
+    () => CYCLE_OPTIONS.map((c) => ({ value: c.value, label: c.label })),
+    []
+  )
+
+  const dueDayOptions: SelectOption[] = useMemo(() => {
+    if (cycle === 'WEEKLY') return WEEKDAY_OPTIONS
+    return Array.from({ length: 31 }, (_, i) => {
+      const day = i + 1
+      return { value: String(day), label: dayOrdinal(day) }
+    })
+  }, [cycle])
+
   const canSubmit = useMemo(
     () =>
       occupancyId.trim().length > 0 &&
@@ -131,9 +171,9 @@ export function RentConfigsManager({
       parseFloat(amount) > 0 &&
       dueDay.trim().length > 0 &&
       parseInt(dueDay) >= 1 &&
-      parseInt(dueDay) <= 31 &&
+      parseInt(dueDay) <= (cycle === 'WEEKLY' ? 7 : 31) &&
       !isPending,
-    [occupancyId, amount, dueDay, isPending]
+    [occupancyId, amount, dueDay, cycle, isPending]
   )
 
   const resetForm = () => {
@@ -206,8 +246,9 @@ export function RentConfigsManager({
     }
 
     const dueDayNum = parseInt(dueDay)
-    if (!dueDay || isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31) {
-      setError('Due day must be between 1 and 31.')
+    const dueDayMax = cycle === 'WEEKLY' ? 7 : 31
+    if (!dueDay || isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > dueDayMax) {
+      setError(cycle === 'WEEKLY' ? 'Due weekday must be between 1 and 7.' : 'Due day must be between 1 and 31.')
       return
     }
 
@@ -226,14 +267,14 @@ export function RentConfigsManager({
         const occupancyLabel = getOccupancyLabel(occupancyId.trim())
         resetForm()
         refresh()
-        toast.success(`Rent config created for ${occupancyLabel}!`, {
+        toast.success(`Rent schedule created for ${occupancyLabel}!`, {
           description: 'Next: generate rent periods to start tracking payments.',
         })
         return
       }
 
       if (!editingId) {
-        toast.error('No rent config selected to edit.')
+        toast.error('No rent schedule selected to edit.')
         return
       }
 
@@ -249,7 +290,7 @@ export function RentConfigsManager({
       }
       resetForm()
       refresh()
-      toast.success('Rent config updated successfully.')
+      toast.success('Rent schedule updated successfully.')
     })
   }
 
@@ -281,7 +322,7 @@ export function RentConfigsManager({
       }
       if (editingId === rc.id) resetForm()
       refresh()
-      toast.success('Rent config deleted successfully.')
+      toast.success('Rent schedule deleted successfully.')
     })
   }
 
@@ -291,7 +332,7 @@ export function RentConfigsManager({
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Rent Configs
+            Rent Schedules
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
             Define rent amounts and schedules for <span className="font-medium">{orgName}</span>
@@ -303,7 +344,7 @@ export function RentConfigsManager({
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle>Your rent configs</CardTitle>
+                <CardTitle>Your rent schedules</CardTitle>
                 <CardDescription className="mt-1">
                   Configure rent amounts, cycles, and due days for each occupancy.
                 </CardDescription>
@@ -323,22 +364,22 @@ export function RentConfigsManager({
               {/* Filter */}
               <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
                 <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                <select
-                  value={filterOccupancyId}
-                  onChange={(e) => {
-                    setFilterOccupancyId(e.target.value)
-                    setError(null)
-                  }}
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                  disabled={isPending}
-                >
-                  <option value="">All occupancies</option>
-                  {occupancies.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {getOccupancyLabel(o.id)}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex-1">
+                  <Select
+                    options={[{ value: '', label: 'All occupancies' }, ...occupancyOptions]}
+                    value={
+                      filterOccupancyId
+                        ? occupancyOptions.find((o) => o.value === filterOccupancyId) ?? null
+                        : { value: '', label: 'All occupancies' }
+                    }
+                    onChange={(opt) => {
+                      setFilterOccupancyId(opt?.value || '')
+                      setError(null)
+                    }}
+                    isDisabled={isPending}
+                    placeholder="All occupancies"
+                  />
+                </div>
               </div>
 
               <AnimatePresence initial={false}>
@@ -378,12 +419,12 @@ export function RentConfigsManager({
                   <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                     {occupancies.length === 0
                       ? 'Prerequisites needed'
-                      : 'No rent configs yet'}
+                      : 'No rent schedules yet'}
                   </p>
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
                     {occupancies.length === 0
-                      ? 'Create occupancies first, then add rent configs for them.'
-                      : 'Create your first rent config to define rent schedules.'}
+                      ? 'Create occupancies first, then add rent schedules for them.'
+                      : 'Create your first rent schedule to define payment terms.'}
                   </p>
                   {occupancies.length > 0 && (
                     <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
@@ -430,7 +471,7 @@ export function RentConfigsManager({
                           onClick={() => onEdit(rc)}
                           disabled={isPending || isLoading}
                           loading={isPending && editingId === rc.id}
-                          aria-label={`Edit rent config`}
+                          aria-label={`Edit rent schedule`}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -440,7 +481,7 @@ export function RentConfigsManager({
                           onClick={() => onDelete(rc)}
                           disabled={isPending || isLoading}
                           loading={isPending && deleteDialog.rentConfig?.id === rc.id}
-                          aria-label={`Delete rent config`}
+                          aria-label={`Delete rent schedule`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -455,42 +496,28 @@ export function RentConfigsManager({
           {/* Form */}
           <Card>
             <CardHeader>
-              <CardTitle>{mode === 'create' ? 'Add a rent config' : 'Edit rent config'}</CardTitle>
+              <CardTitle>{mode === 'create' ? 'Add a rent schedule' : 'Edit rent schedule'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
                   ? 'Define rent amount, cycle, and due day for an occupancy.'
-                  : 'Update the rent config details. Changes save immediately.'}
+                  : 'Update the rent schedule details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {occupancies.length === 0 ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-                  <p>Create occupancies first before adding rent configs.</p>
+                  <p>Create occupancies first before adding rent schedules.</p>
                 </div>
               ) : (
                 <>
-                  <div>
-                    <label
-                      htmlFor="rent-config-occupancy"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                    >
-                      Occupancy <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="rent-config-occupancy"
-                      value={occupancyId}
-                      onChange={(e) => setOccupancyId(e.target.value)}
-                      disabled={isPending}
-                      className="mt-1.5 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    >
-                      <option value="">Select an occupancy</option>
-                      {occupancies.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {getOccupancyLabel(o.id)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Occupancy *"
+                    options={occupancyOptions}
+                    value={occupancyOptions.find((o) => o.value === occupancyId) ?? null}
+                    onChange={(opt) => setOccupancyId(opt?.value || '')}
+                    isDisabled={isPending}
+                    placeholder="Select an occupancy"
+                  />
 
                   <Input
                     id="rent-config-amount"
@@ -505,39 +532,29 @@ export function RentConfigsManager({
                     required
                   />
 
-                  <div>
-                    <label
-                      htmlFor="rent-config-cycle"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                    >
-                      Cycle <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="rent-config-cycle"
-                      value={cycle}
-                      onChange={(e) => setCycle(e.target.value as typeof cycle)}
-                      disabled={isPending}
-                      className="mt-1.5 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    >
-                      {CYCLE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Cycle *"
+                    options={cycleOptions}
+                    value={cycleOptions.find((o) => o.value === cycle) ?? null}
+                    onChange={(opt) => {
+                      setCycle((opt?.value || 'MONTHLY') as typeof cycle)
+                      setDueDay('')
+                    }}
+                    isDisabled={isPending}
+                  />
 
-                  <Input
-                    id="rent-config-due-day"
-                    label="Due day (1-31)"
-                    type="number"
-                    min="1"
-                    max="31"
-                    placeholder="1"
-                    value={dueDay}
-                    onChange={(e) => setDueDay(e.target.value)}
-                    disabled={isPending}
-                    required
+                  <Select
+                    label={cycle === 'WEEKLY' ? 'Due weekday *' : 'Due day of month *'}
+                    options={dueDayOptions}
+                    value={dueDayOptions.find((o) => o.value === dueDay) ?? null}
+                    onChange={(opt) => setDueDay(opt?.value || '')}
+                    isDisabled={isPending}
+                    placeholder={cycle === 'WEEKLY' ? 'Select weekday' : 'Select day'}
+                    helperText={
+                      cycle === 'WEEKLY'
+                        ? 'The weekday rent is due for each weekly period.'
+                        : "The day of the month rent is due. If it doesn't exist in a month (e.g., 31 in February), we use the last day of that month."
+                    }
                   />
 
                   <div className="flex items-center gap-2 pt-1">
@@ -549,7 +566,7 @@ export function RentConfigsManager({
                       loading={isPending}
                       fullWidth
                     >
-                      {mode === 'create' ? 'Create rent config' : 'Save changes'}
+                      {mode === 'create' ? 'Create rent schedule' : 'Save changes'}
                     </Button>
                   </div>
 
@@ -575,10 +592,10 @@ export function RentConfigsManager({
         open={deleteDialog.open}
         onClose={() => setDeleteDialog({ open: false, rentConfig: null })}
         onConfirm={handleDeleteConfirm}
-        title="Delete rent config"
+        title="Delete rent schedule"
         description={
           deleteDialog.rentConfig
-            ? `Delete rent config for ${getOccupancyLabel(deleteDialog.rentConfig.occupancy_id)}? This will remove the rent configuration and may affect linked rent periods.`
+            ? `Delete rent schedule for ${getOccupancyLabel(deleteDialog.rentConfig.occupancy_id)}? This will remove the rent schedule and may affect linked rent periods.`
             : ''
         }
         confirmText="Delete"

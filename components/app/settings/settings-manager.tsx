@@ -3,8 +3,10 @@
 import { useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Settings as SettingsIcon, Wallet, Save } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { updateOrganizationCurrency, getOrganizationBySlug } from '@/app/actions/organizations'
 import { CURRENCY_OPTIONS } from '@/lib/utils/currency'
 
@@ -26,13 +28,12 @@ export function SettingsManager({
   const [isPending, startTransition] = useTransition()
   const [currency, setCurrency] = useState(initialCurrency)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
   const hasChanges = currency !== initialCurrency
+  const currencyOptions: SelectOption[] = CURRENCY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))
 
   const onSubmit = () => {
     setError(null)
-    setSuccess(null)
 
     if (!currency || !/^[A-Z]{3}$/.test(currency)) {
       setError('Invalid currency code. Must be a 3-letter ISO 4217 code.')
@@ -46,11 +47,13 @@ export function SettingsManager({
         return
       }
 
-      setSuccess('Currency updated successfully')
-      // Refresh the page after a short delay to show success message
+      toast.success('Currency updated successfully.', {
+        description: 'Refreshing…',
+      })
+      // Refresh the page after a short delay so server-rendered currency updates everywhere
       setTimeout(() => {
         window.location.reload()
-      }, 1500)
+      }, 900)
     })
   }
 
@@ -95,23 +98,18 @@ export function SettingsManager({
               <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                 Select the currency for all rent amounts and financial displays in this organization.
               </p>
-              <select
-                id="currency"
-                value={currency}
-                onChange={(e) => {
-                  setCurrency(e.target.value)
-                  setError(null)
-                  setSuccess(null)
-                }}
-                disabled={isPending}
-                className="mt-2 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-              >
-                {CURRENCY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2">
+                <Select
+                  options={currencyOptions}
+                  value={currencyOptions.find((o) => o.value === currency) ?? null}
+                  onChange={(opt) => {
+                    setCurrency(opt?.value || initialCurrency)
+                    setError(null)
+                  }}
+                  isDisabled={isPending}
+                  placeholder="Select currency"
+                />
+              </div>
             </div>
 
             <AnimatePresence initial={false}>
@@ -123,16 +121,6 @@ export function SettingsManager({
                   className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
                 >
                   {error}
-                </motion.div>
-              )}
-              {success && (
-                <motion.div
-                  initial={fadeUp.initial}
-                  animate={fadeUp.animate}
-                  exit={fadeUp.exit}
-                  className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-200"
-                >
-                  {success}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -155,7 +143,6 @@ export function SettingsManager({
                   onClick={() => {
                     setCurrency(initialCurrency)
                     setError(null)
-                    setSuccess(null)
                   }}
                   disabled={isPending}
                 >

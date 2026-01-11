@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter } from 'lucide-react'
+import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { listRentPeriods, updateRentPeriodStatus, generateNextRentPeriod } from '@/app/actions/rent-periods'
 import { listRentConfigs } from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
@@ -14,6 +15,7 @@ import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
 import { formatCurrency } from '@/lib/utils/currency'
+import Link from 'next/link'
 
 type RentPeriod = {
   id: string
@@ -129,6 +131,24 @@ export function RentPeriodsManager({
     return `${tenantLabel} in ${unitLabel}`
   }
 
+  const statusOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'ALL', label: 'All statuses' },
+      { value: 'DUE', label: 'Due' },
+      { value: 'OVERDUE', label: 'Overdue' },
+      { value: 'PAID', label: 'Paid' },
+    ],
+    []
+  )
+
+  const rentConfigOptions: SelectOption[] = useMemo(() => {
+    return rentConfigs.map((rc) => ({
+      value: rc.id,
+      label: `${getOccupancyLabel(rc.occupancy_id)} - ${formatCurrency(rc.amount, currency)}/${rc.cycle.toLowerCase()}`,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rentConfigs, occupancies, units, tenants, buildings, currency])
+
   const refresh = () => {
     setIsLoading(true)
     startTransition(async () => {
@@ -196,7 +216,7 @@ export function RentPeriodsManager({
 
   const onGeneratePeriod = () => {
     if (!generateRentConfigId) {
-      toast.error('Please select a rent config to generate a period for.')
+      toast.error('Please select a rent schedule to generate a period for.')
       return
     }
 
@@ -208,7 +228,7 @@ export function RentPeriodsManager({
         return
       }
       const rentConfig = getRentConfig(generateRentConfigId)
-      const occupancyLabel = rentConfig ? getOccupancyLabel(rentConfig.occupancy_id) : 'rent config'
+      const occupancyLabel = rentConfig ? getOccupancyLabel(rentConfig.occupancy_id) : 'rent schedule'
       setGenerateRentConfigId('')
       refresh()
       toast.success(`Rent period generated for ${occupancyLabel}!`, {
@@ -348,28 +368,24 @@ export function RentPeriodsManager({
             {rentConfigs.length > 0 && (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
                 <div className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                  Generate next period
+                  Create billing period
                 </div>
                 <p className="mb-3 text-xs text-zinc-600 dark:text-zinc-300">
-                  Select a rent config to generate the next rent period automatically.
+                  A rent schedule defines the terms (amount, frequency). A billing period is a specific instance to track (e.g., "January 2025"). Select a rent schedule to create the next billing period.
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <select
-                    value={generateRentConfigId}
-                    onChange={(e) => {
-                      setGenerateRentConfigId(e.target.value)
-                      setError(null)
-                    }}
-                    className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    disabled={isPending}
-                  >
-                    <option value="">Select a rent config</option>
-                    {rentConfigs.map((rc) => (
-                      <option key={rc.id} value={rc.id}>
-                        {getOccupancyLabel(rc.occupancy_id)} - {formatCurrency(rc.amount, currency)}/{rc.cycle.toLowerCase()}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <Select
+                      options={rentConfigOptions}
+                      value={rentConfigOptions.find((o) => o.value === generateRentConfigId) ?? null}
+                      onChange={(opt) => {
+                        setGenerateRentConfigId(opt?.value || '')
+                        setError(null)
+                      }}
+                      isDisabled={isPending}
+                      placeholder="Select a rent schedule"
+                    />
+                  </div>
                   <Button
                     variant="primary"
                     size="sm"
@@ -387,37 +403,35 @@ export function RentPeriodsManager({
             <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 sm:flex-row">
               <div className="flex flex-1 items-center gap-2">
                 <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                <select
-                  value={filterStatus}
-                  onChange={(e) => {
-                    setFilterStatus(e.target.value as typeof filterStatus)
+                <div className="flex-1">
+                  <Select
+                    options={statusOptions}
+                    value={statusOptions.find((o) => o.value === filterStatus) ?? null}
+                    onChange={(opt) => {
+                      setFilterStatus((opt?.value || 'ALL') as typeof filterStatus)
+                      setError(null)
+                    }}
+                    isDisabled={isPending}
+                    placeholder="All statuses"
+                  />
+                </div>
+              </div>
+              <div className="flex-1">
+                <Select
+                  options={[{ value: '', label: 'All rent schedules' }, ...rentConfigOptions]}
+                  value={
+                    filterRentConfigId
+                      ? rentConfigOptions.find((o) => o.value === filterRentConfigId) ?? null
+                      : { value: '', label: 'All rent schedules' }
+                  }
+                  onChange={(opt) => {
+                    setFilterRentConfigId(opt?.value || '')
                     setError(null)
                   }}
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                  disabled={isPending}
-                >
-                  <option value="ALL">All statuses</option>
-                  <option value="DUE">Due</option>
-                  <option value="PAID">Paid</option>
-                  <option value="OVERDUE">Overdue</option>
-                </select>
+                  isDisabled={isPending}
+                  placeholder="All rent schedules"
+                />
               </div>
-              <select
-                value={filterRentConfigId}
-                onChange={(e) => {
-                  setFilterRentConfigId(e.target.value)
-                  setError(null)
-                }}
-                className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                disabled={isPending}
-              >
-                <option value="">All rent configs</option>
-                {rentConfigs.map((rc) => (
-                  <option key={rc.id} value={rc.id}>
-                    {getOccupancyLabel(rc.occupancy_id)}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <AnimatePresence initial={false}>
@@ -458,8 +472,8 @@ export function RentPeriodsManager({
                   </p>
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
                     {rentConfigs.length === 0
-                      ? 'Create rent configs first, then rent periods will be generated.'
-                      : 'Generate rent periods for your rent configs to start tracking payments.'}
+                      ? 'Create rent schedules first, then rent periods will be generated.'
+                      : 'Generate rent periods for your rent schedules to start tracking payments.'}
                   </p>
                   {rentConfigs.length > 0 && (
                     <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
@@ -505,16 +519,29 @@ export function RentPeriodsManager({
 
                       <div className="flex items-center gap-2">
                         {rp.status !== 'PAID' && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onStatusChange(rp.id, 'PAID')}
-                            disabled={isPending || isLoading}
-                            loading={isPending}
-                            className="text-green-600 hover:text-green-700 dark:text-green-400"
-                          >
-                            Mark paid
-                          </Button>
+                          <>
+                            <Link href={`/app/org/${orgSlug}/payments?rentPeriodId=${rp.id}`}>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={isPending || isLoading}
+                                className="flex items-center gap-1.5"
+                              >
+                                <Receipt className="h-3.5 w-3.5" />
+                                Record payment
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => onStatusChange(rp.id, 'PAID')}
+                              disabled={isPending || isLoading}
+                              loading={isPending}
+                              className="text-green-600 hover:text-green-700 dark:text-green-400"
+                            >
+                              Mark paid
+                            </Button>
+                          </>
                         )}
                         {rp.status === 'PAID' && (
                           <Button

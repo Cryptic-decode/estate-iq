@@ -100,8 +100,12 @@ export async function createRentConfig(
     return { data: null, error: 'Cycle must be one of: MONTHLY, WEEKLY, QUARTERLY, YEARLY' }
   }
 
-  if (!formData.due_day || formData.due_day < 1 || formData.due_day > 31) {
-    return { data: null, error: 'Due day must be between 1 and 31' }
+  const dueDayMax = formData.cycle === 'WEEKLY' ? 7 : 31
+  if (!formData.due_day || formData.due_day < 1 || formData.due_day > dueDayMax) {
+    return {
+      data: null,
+      error: formData.cycle === 'WEEKLY' ? 'Due weekday must be between 1 and 7' : 'Due day must be between 1 and 31',
+    }
   }
 
   // Verify occupancy belongs to the same org
@@ -175,8 +179,12 @@ export async function updateRentConfig(
     return { data: null, error: 'Cycle must be one of: MONTHLY, WEEKLY, QUARTERLY, YEARLY' }
   }
 
-  if (!formData.due_day || formData.due_day < 1 || formData.due_day > 31) {
-    return { data: null, error: 'Due day must be between 1 and 31' }
+  const dueDayMax = formData.cycle === 'WEEKLY' ? 7 : 31
+  if (!formData.due_day || formData.due_day < 1 || formData.due_day > dueDayMax) {
+    return {
+      data: null,
+      error: formData.cycle === 'WEEKLY' ? 'Due weekday must be between 1 and 7' : 'Due day must be between 1 and 31',
+    }
   }
 
   // Verify rent config belongs to org

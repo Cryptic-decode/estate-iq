@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createUnit, deleteUnit, listUnits, updateUnit } from '@/app/actions/units'
@@ -48,12 +49,12 @@ export function UnitsManager({
   const [isLoading, setIsLoading] = useState(false)
   const [units, setUnits] = useState<Unit[]>(initialUnits)
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings)
-  const [filterBuildingId, setFilterBuildingId] = useState<string>('')
+  const [filterBuildingId, setFilterBuildingId] = useState<SelectOption | null>(null)
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const [buildingId, setBuildingId] = useState('')
+  const [buildingId, setBuildingId] = useState<SelectOption | null>(null)
   const [unitNumber, setUnitNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; unit: Unit | null }>({
@@ -64,8 +65,22 @@ export function UnitsManager({
   // Filter units by building
   const filteredUnits = useMemo(() => {
     if (!filterBuildingId) return units
-    return units.filter((u) => u.building_id === filterBuildingId)
+    return units.filter((u) => u.building_id === filterBuildingId.value)
   }, [units, filterBuildingId])
+
+  // Building options for Select
+  const buildingOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: '', label: 'All buildings' },
+      ...buildings.map((b) => ({ value: b.id, label: b.name })),
+    ],
+    [buildings]
+  )
+
+  const formBuildingOptions = useMemo<SelectOption[]>(
+    () => buildings.map((b) => ({ value: b.id, label: b.name })),
+    [buildings]
+  )
 
   // Get building name for a unit
   const getBuildingName = (buildingId: string) => {
@@ -74,14 +89,14 @@ export function UnitsManager({
   }
 
   const canSubmit = useMemo(
-    () => buildingId.trim().length > 0 && unitNumber.trim().length > 0 && !isPending,
+    () => buildingId && buildingId.value.trim().length > 0 && unitNumber.trim().length > 0 && !isPending,
     [buildingId, unitNumber, isPending]
   )
 
   const resetForm = () => {
     setMode('create')
     setEditingId(null)
-    setBuildingId('')
+    setBuildingId(null)
     setUnitNumber('')
     setError(null)
   }
@@ -115,13 +130,12 @@ export function UnitsManager({
 
   const onSubmit = () => {
     setError(null)
-    const trimmedBuildingId = buildingId.trim()
-    const trimmedUnitNumber = unitNumber.trim()
-
-    if (!trimmedBuildingId) {
+    if (!buildingId || !buildingId.value) {
       setError('Building is required.')
       return
     }
+    const trimmedBuildingId = buildingId.value.trim()
+    const trimmedUnitNumber = unitNumber.trim()
 
     if (!trimmedUnitNumber) {
       setError('Unit number is required.')
@@ -168,7 +182,8 @@ export function UnitsManager({
   const onEdit = (u: Unit) => {
     setMode('edit')
     setEditingId(u.id)
-    setBuildingId(u.building_id)
+    const building = buildings.find((b) => b.id === u.building_id)
+    setBuildingId(building ? { value: building.id, label: building.name } : null)
     setUnitNumber(u.unit_number)
     setError(null)
   }
@@ -232,23 +247,20 @@ export function UnitsManager({
             <CardContent className="space-y-3">
               {/* Building Filter */}
               <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
-                <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                <select
-                  value={filterBuildingId}
-                  onChange={(e) => {
-                    setFilterBuildingId(e.target.value)
-                    setError(null)
-                  }}
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                  disabled={isPending}
-                >
-                  <option value="">All buildings</option>
-                  {buildings.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <Filter className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                <div className="flex-1">
+                  <Select
+                    options={buildingOptions}
+                    value={filterBuildingId}
+                    onChange={(v) => {
+                      setFilterBuildingId(v)
+                      setError(null)
+                    }}
+                    isDisabled={isPending}
+                    placeholder="All buildings"
+                    isClearable
+                  />
+                </div>
               </div>
 
               <AnimatePresence initial={false}>
@@ -375,28 +387,15 @@ export function UnitsManager({
                 </div>
               ) : (
                 <>
-                  <div>
-                    <label
-                      htmlFor="unit-building"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                    >
-                      Building <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="unit-building"
-                      value={buildingId}
-                      onChange={(e) => setBuildingId(e.target.value)}
-                      disabled={isPending}
-                      className="mt-1.5 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    >
-                      <option value="">Select a building</option>
-                      {buildings.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Building"
+                    options={formBuildingOptions}
+                    value={buildingId}
+                    onChange={(v) => setBuildingId(v)}
+                    isDisabled={isPending}
+                    placeholder="Select a building"
+                    required
+                  />
 
                   <Input
                     id="unit-number"

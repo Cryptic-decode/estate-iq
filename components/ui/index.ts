@@ -11,4 +11,5 @@ export {
 export { ConfirmDialog } from './confirm-dialog'
 export { Skeleton, type SkeletonProps } from './skeleton'
 export { Spinner, type SpinnerProps } from './spinner'
+export { Select, type SelectOption, type SelectProps } from './select'
 

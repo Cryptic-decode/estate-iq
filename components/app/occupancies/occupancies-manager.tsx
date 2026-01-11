@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createOccupancy, deleteOccupancy, listOccupancies, updateOccupancy } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
@@ -67,14 +68,14 @@ export function OccupanciesManager({
   const [units, setUnits] = useState<Unit[]>(initialUnits)
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings)
-  const [filterUnitId, setFilterUnitId] = useState<string>('')
-  const [filterTenantId, setFilterTenantId] = useState<string>('')
+  const [filterUnitId, setFilterUnitId] = useState<SelectOption | null>(null)
+  const [filterTenantId, setFilterTenantId] = useState<SelectOption | null>(null)
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const [unitId, setUnitId] = useState('')
-  const [tenantId, setTenantId] = useState('')
+  const [unitId, setUnitId] = useState<SelectOption | null>(null)
+  const [tenantId, setTenantId] = useState<SelectOption | null>(null)
   const [activeFrom, setActiveFrom] = useState('')
   const [activeTo, setActiveTo] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -87,13 +88,40 @@ export function OccupanciesManager({
   const filteredOccupancies = useMemo(() => {
     let filtered = occupancies
     if (filterUnitId) {
-      filtered = filtered.filter((o) => o.unit_id === filterUnitId)
+      filtered = filtered.filter((o) => o.unit_id === filterUnitId.value)
     }
     if (filterTenantId) {
-      filtered = filtered.filter((o) => o.tenant_id === filterTenantId)
+      filtered = filtered.filter((o) => o.tenant_id === filterTenantId.value)
     }
     return filtered
   }, [occupancies, filterUnitId, filterTenantId])
+
+  // Options for Select components
+  const unitOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: '', label: 'All units' },
+      ...units.map((u) => ({ value: u.id, label: getUnitName(u.id) })),
+    ],
+    [units, buildings]
+  )
+
+  const tenantOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: '', label: 'All tenants' },
+      ...tenants.map((t) => ({ value: t.id, label: t.full_name })),
+    ],
+    [tenants]
+  )
+
+  const formUnitOptions = useMemo<SelectOption[]>(
+    () => units.map((u) => ({ value: u.id, label: getUnitName(u.id) })),
+    [units, buildings]
+  )
+
+  const formTenantOptions = useMemo<SelectOption[]>(
+    () => tenants.map((t) => ({ value: t.id, label: t.full_name })),
+    [tenants]
+  )
 
   // Helper functions
   const getUnitName = (unitId: string) => {
@@ -110,8 +138,10 @@ export function OccupanciesManager({
 
   const canSubmit = useMemo(
     () =>
-      unitId.trim().length > 0 &&
-      tenantId.trim().length > 0 &&
+      unitId &&
+      unitId.value.trim().length > 0 &&
+      tenantId &&
+      tenantId.value.trim().length > 0 &&
       activeFrom.trim().length > 0 &&
       !isPending,
     [unitId, tenantId, activeFrom, isPending]
@@ -120,8 +150,8 @@ export function OccupanciesManager({
   const resetForm = () => {
     setMode('create')
     setEditingId(null)
-    setUnitId('')
-    setTenantId('')
+    setUnitId(null)
+    setTenantId(null)
     setActiveFrom('')
     setActiveTo('')
     setError(null)
@@ -169,12 +199,12 @@ export function OccupanciesManager({
   const onSubmit = () => {
     setError(null)
 
-    if (!unitId.trim()) {
+    if (!unitId || !unitId.value.trim()) {
       setError('Unit is required.')
       return
     }
 
-    if (!tenantId.trim()) {
+    if (!tenantId || !tenantId.value.trim()) {
       setError('Tenant is required.')
       return
     }
@@ -192,8 +222,8 @@ export function OccupanciesManager({
     startTransition(async () => {
       if (mode === 'create') {
         const res = await createOccupancy(orgSlug, {
-          unit_id: unitId.trim(),
-          tenant_id: tenantId.trim(),
+          unit_id: unitId.value.trim(),
+          tenant_id: tenantId.value.trim(),
           active_from: activeFrom,
           active_to: activeTo.trim() || null,
         })
@@ -201,12 +231,12 @@ export function OccupanciesManager({
           toast.error(res.error)
           return
         }
-        const unitName = getUnitName(unitId.trim())
-        const tenantName = getTenantName(tenantId.trim())
+        const unitName = getUnitName(unitId.value.trim())
+        const tenantName = getTenantName(tenantId.value.trim())
         resetForm()
         refresh()
         toast.success('Occupancy created!', {
-          description: `${tenantName} is now assigned to ${unitName}. Next: create a rent config for this occupancy.`,
+          description: `${tenantName} is now assigned to ${unitName}. Next: create a rent schedule for this occupancy.`,
         })
         return
       }
@@ -217,8 +247,8 @@ export function OccupanciesManager({
       }
 
       const res = await updateOccupancy(orgSlug, editingId, {
-        unit_id: unitId.trim(),
-        tenant_id: tenantId.trim(),
+        unit_id: unitId.value.trim(),
+        tenant_id: tenantId.value.trim(),
         active_from: activeFrom,
         active_to: activeTo.trim() || null,
       })
@@ -235,8 +265,10 @@ export function OccupanciesManager({
   const onEdit = (o: Occupancy) => {
     setMode('edit')
     setEditingId(o.id)
-    setUnitId(o.unit_id)
-    setTenantId(o.tenant_id)
+    const unit = units.find((u) => u.id === o.unit_id)
+    const tenant = tenants.find((t) => t.id === o.tenant_id)
+    setUnitId(unit ? { value: unit.id, label: getUnitName(unit.id) } : null)
+    setTenantId(tenant ? { value: tenant.id, label: tenant.full_name } : null)
     setActiveFrom(o.active_from)
     setActiveTo(o.active_to || '')
     setError(null)
@@ -319,44 +351,38 @@ export function OccupanciesManager({
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Filters */}
-              <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 sm:flex-row">
-                <div className="flex flex-1 items-center gap-2">
-                  <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                  <select
+            {/* Filters */}
+            <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 sm:flex-row">
+              <div className="flex flex-1 items-center gap-2">
+                <Filter className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                <div className="flex-1">
+                  <Select
+                    options={unitOptions}
                     value={filterUnitId}
-                    onChange={(e) => {
-                      setFilterUnitId(e.target.value)
+                    onChange={(v) => {
+                      setFilterUnitId(v)
                       setError(null)
                     }}
-                    className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    disabled={isPending}
-                  >
-                    <option value="">All units</option>
-                    {units.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {getUnitName(u.id)}
-                      </option>
-                    ))}
-                  </select>
+                    isDisabled={isPending}
+                    placeholder="All units"
+                    isClearable
+                  />
                 </div>
-                <select
+              </div>
+              <div className="flex-1">
+                <Select
+                  options={tenantOptions}
                   value={filterTenantId}
-                  onChange={(e) => {
-                    setFilterTenantId(e.target.value)
+                  onChange={(v) => {
+                    setFilterTenantId(v)
                     setError(null)
                   }}
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                  disabled={isPending}
-                >
-                  <option value="">All tenants</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.full_name}
-                    </option>
-                  ))}
-                </select>
+                  isDisabled={isPending}
+                  placeholder="All tenants"
+                  isClearable
+                />
               </div>
+            </div>
 
               <AnimatePresence initial={false}>
                 {error && (
@@ -499,51 +525,25 @@ export function OccupanciesManager({
                 </div>
               ) : (
                 <>
-                  <div>
-                    <label
-                      htmlFor="occupancy-unit"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                    >
-                      Unit <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="occupancy-unit"
-                      value={unitId}
-                      onChange={(e) => setUnitId(e.target.value)}
-                      disabled={isPending}
-                      className="mt-1.5 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    >
-                      <option value="">Select a unit</option>
-                      {units.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {getUnitName(u.id)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Unit"
+                    options={formUnitOptions}
+                    value={unitId}
+                    onChange={(v) => setUnitId(v)}
+                    isDisabled={isPending}
+                    placeholder="Select a unit"
+                    required
+                  />
 
-                  <div>
-                    <label
-                      htmlFor="occupancy-tenant"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                    >
-                      Tenant <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="occupancy-tenant"
-                      value={tenantId}
-                      onChange={(e) => setTenantId(e.target.value)}
-                      disabled={isPending}
-                      className="mt-1.5 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:border-zinc-600 dark:focus:ring-zinc-600"
-                    >
-                      <option value="">Select a tenant</option>
-                      {tenants.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Tenant"
+                    options={formTenantOptions}
+                    value={tenantId}
+                    onChange={(v) => setTenantId(v)}
+                    isDisabled={isPending}
+                    placeholder="Select a tenant"
+                    required
+                  />
 
                   <div>
                     <label

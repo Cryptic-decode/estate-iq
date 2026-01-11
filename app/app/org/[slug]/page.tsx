@@ -90,13 +90,13 @@ export default async function OrgDashboardPage({
     } else if (stats.rentConfigs === 0) {
       messages.push({
         type: 'info',
-        text: `You have ${stats.occupancies} occupancy${stats.occupancies > 1 ? 'ies' : ''}. Define rent configurations to set up payment schedules.`,
-        action: { label: 'Create rent config', href: `/app/org/${slug}/rent-configs` },
+        text: `You have ${stats.occupancies} occupancy${stats.occupancies > 1 ? 'ies' : ''}. Define rent schedules to set up payment terms.`,
+        action: { label: 'Create rent schedule', href: `/app/org/${slug}/rent-configs` },
       })
     } else if (stats.rentPeriods === 0) {
       messages.push({
         type: 'info',
-        text: `You have ${stats.rentConfigs} rent config${stats.rentConfigs > 1 ? 's' : ''}. Generate rent periods to start tracking payments.`,
+        text: `You have ${stats.rentConfigs} rent schedule${stats.rentConfigs > 1 ? 's' : ''}. Generate rent periods to start tracking payments.`,
         action: { label: 'View rent periods', href: `/app/org/${slug}/rent-periods` },
       })
     }
@@ -119,7 +119,7 @@ export default async function OrgDashboardPage({
     { href: `units`, label: 'Units', icon: Home, description: 'Track individual units', count: stats.units },
     { href: `tenants`, label: 'Tenants', icon: Users, description: 'Manage tenant information', count: stats.tenants },
     { href: `occupancies`, label: 'Occupancies', icon: FileText, description: 'Assign tenants to units', count: stats.occupancies },
-    { href: `rent-configs`, label: 'Rent Configs', icon: Wallet, description: 'Define rent schedules', count: stats.rentConfigs },
+    { href: `rent-configs`, label: 'Rent Schedules', icon: Wallet, description: 'Define rent schedules', count: stats.rentConfigs },
     { href: `rent-periods`, label: 'Rent Periods', icon: Calendar, description: 'Track rent payments', count: stats.rentPeriods },
   ]
 
@@ -136,7 +136,7 @@ export default async function OrgDashboardPage({
               {organization.name}
             </h1>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-              Quick access to setup, rent configs, and rent periods.
+              Quick access to setup, rent schedules, and rent periods.
             </p>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Signed in as: {membership.role}</p>
           </div>
@@ -253,7 +253,7 @@ export default async function OrgDashboardPage({
                   <span className="font-medium">2.</span> Add Tenants → create Occupancies
                 </li>
                 <li>
-                  <span className="font-medium">3.</span> Create Rent Configs → track Rent Periods
+                  <span className="font-medium">3.</span> Create Rent Schedules → track Rent Periods
                 </li>
               </ol>
             </CardContent>

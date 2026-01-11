@@ -5,9 +5,10 @@ import { ReactNode, useState, useTransition, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion } from 'framer-motion'
 import { signOut } from '@/app/actions/auth'
-import { Building2, Home, Users, FileText, Wallet, Calendar, Settings, LogOut, Moon, Sun } from 'lucide-react'
+import { Building2, Home, Users, FileText, Wallet, Calendar, Settings, LogOut, Moon, Sun, Receipt, LayoutGrid } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { NavDropdown } from '@/components/app/nav-dropdown'
 import { hoverScaleVariants } from '@/components/auth/motion-variants'
 
 interface AppLayoutProps {
@@ -18,13 +19,27 @@ interface AppLayoutProps {
   children: ReactNode
 }
 
-const navItems = [
-  { href: 'buildings', label: 'Buildings', icon: Building2 },
-  { href: 'units', label: 'Units', icon: Home },
-  { href: 'tenants', label: 'Tenants', icon: Users },
-  { href: 'occupancies', label: 'Occupancies', icon: FileText },
-  { href: 'rent-configs', label: 'Rent Configs', icon: Wallet },
-  { href: 'rent-periods', label: 'Rent Periods', icon: Calendar },
+// Grouped navigation items
+const navGroups = [
+  {
+    label: 'Portfolio',
+    icon: LayoutGrid,
+    items: [
+      { href: 'buildings', label: 'Buildings', icon: Building2 },
+      { href: 'units', label: 'Units', icon: Home },
+      { href: 'tenants', label: 'Tenants', icon: Users },
+      { href: 'occupancies', label: 'Occupancies', icon: FileText },
+    ],
+  },
+  {
+    label: 'Rent & Payments',
+    icon: Wallet,
+    items: [
+      { href: 'rent-configs', label: 'Rent Schedules', icon: Wallet },
+      { href: 'rent-periods', label: 'Rent Periods', icon: Calendar },
+      { href: 'payments', label: 'Payments', icon: Receipt },
+    ],
+  },
 ]
 
 export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }: AppLayoutProps) {
@@ -62,26 +77,14 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
             </div>
 
             <nav className="hidden items-center gap-1 md:flex">
-              {navItems.map((item) => {
-                const href = `/app/org/${orgSlug}/${item.href}`
-                const isActive = currentPath === item.href || currentPath === href
-                const Icon = item.icon
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={href}
-                    className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${
-                      isActive
-                        ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
-                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                )
-              })}
+              {navGroups.map((group) => (
+                <NavDropdown
+                  key={group.label}
+                  group={group}
+                  orgSlug={orgSlug}
+                  currentPath={currentPath}
+                />
+              ))}
             </nav>
 
             <div className="flex items-center gap-2">
