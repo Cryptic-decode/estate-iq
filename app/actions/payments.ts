@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getOrgContextForUser } from './_org-context'
+import { createAuditLog } from './audit-logs'
 
 type Payment = {
   id: string
@@ -143,6 +144,26 @@ export async function createPayment(
     return { data: null, error: 'Failed to mark rent period as paid' }
   }
 
+  // Log audit entry
+  await createAuditLog(
+    orgRes.data.organizationId,
+    user.id,
+    'PAYMENT_CREATED',
+    'payment',
+    `Payment created: ${payment.amount} for rent period ${payment.rent_period_id}`,
+    {
+      entityId: payment.id,
+      metadata: {
+        after: {
+          amount: payment.amount,
+          paid_at: payment.paid_at,
+          reference: payment.reference,
+          rent_period_id: payment.rent_period_id,
+        },
+      },
+    }
+  )
+
   return { data: payment as Payment, error: null }
 }
 
@@ -173,10 +194,10 @@ export async function updatePayment(
     return { data: null, error: 'Insufficient permissions' }
   }
 
-  // Verify payment belongs to org
+  // Verify payment belongs to org (get full details for audit log)
   const { data: existingPayment, error: paymentError } = await supabase
     .from('payments')
-    .select('id, organization_id, rent_period_id')
+    .select('id, organization_id, rent_period_id, amount, paid_at, reference')
     .eq('id', paymentId)
     .eq('organization_id', orgRes.data.organizationId)
     .single()
@@ -222,6 +243,37 @@ export async function updatePayment(
     return { data: null, error: 'Failed to update payment' }
   }
 
+  // Log audit entry if significant changes were made
+  const hasChanges =
+    (formData.amount !== undefined && formData.amount !== existingPayment.amount) ||
+    (formData.paid_at !== undefined && formData.paid_at !== existingPayment.paid_at) ||
+    (formData.reference !== undefined && formData.reference !== existingPayment.reference)
+
+  if (hasChanges) {
+    await createAuditLog(
+      orgRes.data.organizationId,
+      user.id,
+      'PAYMENT_UPDATED',
+      'payment',
+      `Payment updated: ${payment.amount} for rent period ${payment.rent_period_id}`,
+      {
+        entityId: paymentId,
+        metadata: {
+          before: {
+            amount: existingPayment.amount,
+            paid_at: existingPayment.paid_at,
+            reference: existingPayment.reference,
+          },
+          after: {
+            amount: payment.amount,
+            paid_at: payment.paid_at,
+            reference: payment.reference,
+          },
+        },
+      }
+    )
+  }
+
   return { data: payment as Payment, error: null }
 }
 
@@ -251,10 +303,10 @@ export async function deletePayment(
     return { error: 'Only organization owners can delete payments' }
   }
 
-  // Get payment with rent period info
+  // Get payment with rent period info (including amount for audit log)
   const { data: payment, error: paymentError } = await supabase
     .from('payments')
-    .select('id, organization_id, rent_period_id')
+    .select('id, organization_id, rent_period_id, amount, paid_at, reference')
     .eq('id', paymentId)
     .eq('organization_id', orgRes.data.organizationId)
     .single()
@@ -301,6 +353,9 @@ export async function deletePayment(
   }
 
   // If this was the only payment, revert rent period status
+  const previousStatus = rentPeriod.status
+  let newStatus = previousStatus
+
   if (!otherPayments || otherPayments.length === 0) {
     const dueDate = new Date(rentPeriod.due_date)
     const today = new Date()
@@ -308,7 +363,7 @@ export async function deletePayment(
     dueDate.setHours(0, 0, 0, 0)
 
     // Determine new status based on due date
-    const newStatus = today > dueDate ? 'OVERDUE' : 'DUE'
+    newStatus = today > dueDate ? 'OVERDUE' : 'DUE'
 
     const { error: updateError } = await supabase
       .from('rent_periods')
@@ -322,6 +377,30 @@ export async function deletePayment(
       // The rent period will remain as PAID, which is acceptable
     }
   }
+
+  // Log audit entry
+  await createAuditLog(
+    orgRes.data.organizationId,
+    user.id,
+    'PAYMENT_DELETED',
+    'payment',
+    `Payment deleted: ${payment.amount} for rent period ${payment.rent_period_id}`,
+    {
+      entityId: paymentId,
+      metadata: {
+        before: {
+          amount: payment.amount,
+          paid_at: payment.paid_at,
+          reference: payment.reference,
+          rent_period_id: payment.rent_period_id,
+          rent_period_status: previousStatus,
+        },
+        after: {
+          rent_period_status: newStatus,
+        },
+      },
+    }
+  )
 
   return { error: null }
 }

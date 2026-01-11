@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getOrgContextForUser } from './_org-context'
+import { createAuditLog } from './audit-logs'
 
 type RentPeriod = {
   id: string
@@ -187,10 +188,10 @@ export async function updateRentPeriodStatus(
     return { data: null, error: 'Invalid status. Must be one of: DUE, PAID, OVERDUE' }
   }
 
-  // Verify rent period belongs to org
+  // Verify rent period belongs to org (get current status for audit log)
   const { data: existingRentPeriod, error: rentPeriodError } = await supabase
     .from('rent_periods')
-    .select('id, organization_id')
+    .select('id, organization_id, status, due_date')
     .eq('id', rentPeriodId)
     .eq('organization_id', orgRes.data.organizationId)
     .single()
@@ -198,6 +199,8 @@ export async function updateRentPeriodStatus(
   if (rentPeriodError || !existingRentPeriod) {
     return { data: null, error: 'Rent period not found or access denied' }
   }
+
+  const previousStatus = existingRentPeriod.status
 
   // Update status (database trigger will recalculate days_overdue)
   const { data: rentPeriod, error } = await supabase
@@ -213,6 +216,30 @@ export async function updateRentPeriodStatus(
   if (error) {
     console.error('Error updating rent period status:', error)
     return { data: null, error: 'Failed to update rent period status' }
+  }
+
+  // Log audit entry if status actually changed
+  if (previousStatus !== statusUpdate.status) {
+    await createAuditLog(
+      orgRes.data.organizationId,
+      user.id,
+      'RENT_PERIOD_STATUS_CHANGED',
+      'rent_period',
+      `Rent period status changed from ${previousStatus} to ${statusUpdate.status}`,
+      {
+        entityId: rentPeriodId,
+        metadata: {
+          before: {
+            status: previousStatus,
+            due_date: existingRentPeriod.due_date,
+          },
+          after: {
+            status: statusUpdate.status,
+            due_date: existingRentPeriod.due_date,
+          },
+        },
+      }
+    )
   }
 
   return { data: rentPeriod as RentPeriod, error: null }

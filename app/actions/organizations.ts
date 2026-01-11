@@ -213,6 +213,20 @@ export async function updateOrganizationCurrency(
     return { error: 'Invalid currency code. Must be a 3-letter ISO 4217 code (e.g., NGN, USD)' }
   }
 
+  // Get current currency for audit log
+  const { data: org, error: orgFetchError } = await supabase
+    .from('organizations')
+    .select('currency')
+    .eq('id', membership.organization.id)
+    .single()
+
+  if (orgFetchError) {
+    console.error('Error fetching organization:', orgFetchError)
+    return { error: 'Failed to fetch organization' }
+  }
+
+  const previousCurrency = org.currency || null
+
   const { error } = await supabase
     .from('organizations')
     .update({ currency })
@@ -222,6 +236,22 @@ export async function updateOrganizationCurrency(
     console.error('Error updating organization currency:', error)
     return { error: 'Failed to update currency' }
   }
+
+  // Log audit entry
+  await createAuditLog(
+    membership.organization.id,
+    user.id,
+    'ORGANIZATION_CURRENCY_UPDATED',
+    'organization',
+    `Organization currency updated from ${previousCurrency || 'null'} to ${currency}`,
+    {
+      entityId: membership.organization.id,
+      metadata: {
+        before: { currency: previousCurrency },
+        after: { currency },
+      },
+    }
+  )
 
   return { error: null }
 }

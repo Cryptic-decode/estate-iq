@@ -5,7 +5,24 @@ import { ReactNode, useState, useTransition, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion } from 'framer-motion'
 import { signOut } from '@/app/actions/auth'
-import { Building2, Home, Users, FileText, Wallet, Calendar, Settings, LogOut, Moon, Sun, Receipt, LayoutGrid, AlertCircle, Clock } from 'lucide-react'
+import {
+  Building2,
+  Home,
+  Users,
+  FileText,
+  Wallet,
+  Calendar,
+  Settings,
+  LogOut,
+  Moon,
+  Sun,
+  Receipt,
+  LayoutGrid,
+  AlertCircle,
+  BarChart3,
+  Shield,
+  PieChart,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { NavDropdown } from '@/components/app/nav-dropdown'
@@ -40,6 +57,16 @@ const navGroups = [
       { href: 'payments', label: 'Payments', icon: Receipt },
       { href: 'follow-ups', label: 'Follow-up Queue', icon: AlertCircle },
       { href: 'buildings-unpaid', label: 'Unpaid by Building', icon: Building2 },
+    ],
+  },
+  {
+    label: 'Reports',
+    icon: BarChart3,
+    items: [
+      { href: 'reports', label: 'Overview', icon: BarChart3 },
+      { href: 'reports/delinquency-aging', label: 'Overdue Analysis', icon: BarChart3 },
+      { href: 'reports/building-rollups', label: 'Building Rollups', icon: PieChart },
+      { href: 'reports/audit-trail', label: 'Audit Trail', icon: Shield },
     ],
   },
 ]

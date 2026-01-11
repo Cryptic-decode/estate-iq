@@ -35,8 +35,10 @@ export function NavDropdown({ group, orgSlug, currentPath }: NavDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const Icon = group.icon
 
-  // Check if any item in the group is active
-  const isGroupActive = group.items.some((item) => currentPath === item.href)
+  // Check if any item in the group is active (supports nested paths)
+  const isGroupActive = group.items.some(
+    (item) => currentPath === item.href || (currentPath && currentPath.startsWith(item.href + '/'))
+  )
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -93,7 +95,8 @@ export function NavDropdown({ group, orgSlug, currentPath }: NavDropdownProps) {
             <div className="p-1">
               {group.items.map((item) => {
                 const href = `/app/org/${orgSlug}/${item.href}`
-                const isActive = currentPath === item.href
+                const isActive =
+                  currentPath === item.href || (currentPath && currentPath.startsWith(item.href + '/'))
                 const ItemIcon = item.icon
 
                 return (

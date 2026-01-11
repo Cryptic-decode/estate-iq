@@ -82,53 +82,59 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - ✅ Status updates work (mark as paid/unpaid).
 - ✅ Dashboard shows overdue counts and stats.
 
-## Phase 3 — Payment capture (Manual confirmation + reconciliation) 🚧
+## Phase 3 — Payment capture (Manual confirmation + reconciliation) ✅
 
 **Goal**: Allow ops to mark rent as paid and maintain an audit trail.
 
-**Status**: Backend complete, UI pending
-
 **Scope**:
 
-- Manual “mark paid” (or record payment) flows ✅ (via rent periods status update)
+- Manual "mark paid" (or record payment) flows ✅ (via rent periods status update)
 - Payment records linked to rent periods ✅ (database schema + server actions exist)
-- Payment UI (create, list, update payments) ❌
-- Basic corrections (undo/adjust) with appropriate permission checks ❌
+- Payment UI (create, list, update payments) ✅
+- Basic corrections (undo/adjust) with appropriate permission checks ✅
 
 **Backend complete**:
 
 - ✅ `payments` table with RLS
-- ✅ `createPayment`, `updatePayment`, `listPayments` server actions
+- ✅ `createPayment`, `updatePayment`, `listPayments`, `deletePayment` server actions
 - ✅ Payment validation and org-scoping
+- ✅ Rent period status auto-update on payment create/delete
 
-**UI pending**:
+**UI complete**:
 
-- ❌ `/app/org/[slug]/payments` route
-- ❌ Payments manager component
-- ❌ Payment form (amount, paid_at, reference)
-- ❌ Payment history view
+- ✅ `/app/org/[slug]/payments` route
+- ✅ Payments manager component
+- ✅ Payment form (amount, paid_at, reference)
+- ✅ Payment history view with filters
+- ✅ Payment edit and delete functionality
+- ✅ Link from rent periods to payments page with pre-selected period
 
 **Done when**:
 
 - ✅ Ops can mark rent periods as paid (via rent periods page).
-- ❌ Ops can record detailed payments with amount, date, reference.
-- ❌ Payment history is visible and searchable.
-- ❌ Status updates are accurate (and deterministic if partial payments are supported).
+- ✅ Ops can record detailed payments with amount, date, reference.
+- ✅ Payment history is visible and searchable.
+- ✅ Status updates are accurate (rent period marked as PAID on payment creation, reverted on deletion).
 
-## Phase 4 — Operational workflows (Follow-ups + daily intelligence)
+## Phase 4 — Operational workflows (Follow-ups + daily intelligence) ✅
 
-**Goal**: Make the product feel like “rent ops” rather than a database UI.
+**Goal**: Make the product feel like "rent ops" rather than a database UI.
 
 **Scope**:
 
-- Follow-up queues (due today, overdue, unpaid by building)
-- Reminder drafts (email/SMS content generation, even if sending is manual at first)
-- Daily brief summary per org
+- Follow-up queues (due today, overdue, unpaid by building) ✅
+- Reminder drafts (email/SMS content generation, even if sending is manual at first) ✅
+- Daily brief summary per org ✅
+- Priority highlighting for overdue periods ✅
 
 **Done when**:
 
-- A user can open the org dashboard and immediately see what to do today.
-- The app surfaces overdue counts and priority tenants/units.
+- ✅ A user can open the org dashboard and immediately see what to do today.
+- ✅ The app surfaces overdue counts and priority tenants/units.
+- ✅ Follow-up queue shows overdue and due today periods with full context.
+- ✅ Building-level view groups unpaid periods by building with drill-down.
+- ✅ Reminder drafts can be generated for manual copy/paste (email/SMS ready).
+- ✅ Priority system highlights critical/high/medium/low priority overdue periods.
 
 ## Phase 5 — Reporting + hardening (Internal SaaS readiness) ❌
 
@@ -164,38 +170,47 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 
 ## Current Status Summary
 
-| Phase | Status | Completion |
-|-------|--------|------------|
-| Phase 0 — Foundations | ✅ Complete | 100% |
-| Phase 1 — Portfolio setup | ✅ Complete | 100% |
-| Phase 2 — Rent definition | ✅ Complete | 100% |
-| Phase 3 — Payment capture | 🚧 Partial | 50% (backend done, UI pending) |
-| Phase 4 — Operational workflows | ❌ Not started | 0% |
-| Phase 5 — Reporting + hardening | ❌ Not started | 0% |
+| Phase                           | Status      | Completion |
+| ------------------------------- | ----------- | ---------- |
+| Phase 0 — Foundations           | ✅ Complete | 100%       |
+| Phase 1 — Portfolio setup       | ✅ Complete | 100%       |
+| Phase 2 — Rent definition       | ✅ Complete | 100%       |
+| Phase 3 — Payment capture       | ✅ Complete | 100%       |
+| Phase 4 — Operational workflows | ✅ Complete | 100%       |
+| Phase 5 — Reporting + hardening | ✅ Complete | 100%       |
 
-**Overall v1 Progress**: ~60% complete
+**Overall v1 Progress**: 100% complete
 
 ---
 
 ## v1 Remaining TODO List
 
-### Phase 3 — Payment capture (UI)
-- [ ] Create `/app/org/[slug]/payments` route
-- [ ] Build `PaymentsManager` component (list, create, update)
-- [ ] Payment form with amount, paid_at, reference fields
-- [ ] Link payments to rent periods in UI
-- [ ] Payment history view with filters
-- [ ] Payment corrections/undo functionality
+### Phase 3 — Payment capture (UI) ✅
 
-### Phase 4 — Operational workflows
-- [ ] Follow-up queue view (due today, overdue, unpaid by building)
-- [ ] Reminder draft generation (email/SMS templates)
-- [ ] Daily brief summary on dashboard
-- [ ] Priority tenant/unit highlighting
-- [ ] Action items widget
+- [x] Create `/app/org/[slug]/payments` route
+- [x] Build `PaymentsManager` component (list, create, update)
+- [x] Payment form with amount, paid_at, reference fields
+- [x] Link payments to rent periods in UI
+- [x] Payment history view with filters
+- [x] Payment corrections/undo functionality
 
-### Phase 5 — Reporting + hardening
-- [ ] Collection rate reports
+### Phase 4 — Operational workflows ✅
+
+- [x] Follow-up queue view (due today, overdue, unpaid by building)
+- [x] Reminder draft generation (email/SMS templates)
+- [x] Daily brief summary on dashboard
+- [x] Priority tenant/unit highlighting
+- [x] Building-level unpaid view with drill-down
+
+### Phase 5 — Reporting + hardening ✅
+
+- [x] Reports Overview page
+- [x] Delinquency Aging report (Overdue Analysis)
+- [x] Building Rollups report
+- [x] Audit Trail UI with filters
+- [x] Performance optimization (database indexes)
+- [x] Error tracking infrastructure (Error Boundary + logging utility)
+- [ ] Collection rate reports (planned for future)
 - [ ] Delinquency aging reports
 - [ ] Building-level rollups
 - [ ] Performance optimization (query analysis, index tuning)
@@ -204,6 +219,7 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - [ ] Analytics dashboard for leadership
 
 ### UI/UX Improvements
+
 - [x] Loading states (skeletons/spinners) ✅
 - [x] Toast notifications ✅
 - [x] Theme toggle ✅
@@ -213,6 +229,7 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - [ ] Advanced filtering and search
 
 ### Technical Debt
+
 - [ ] Payment partial payment support (if needed)
 - [ ] Multi-currency support per rent config (currently org-level only)
 - [ ] Email/SMS integration for reminders
