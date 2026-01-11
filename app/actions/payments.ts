@@ -1,8 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import { getUserMemberships } from './organizations'
+import { getOrgContextForUser } from './_org-context'
 
 type Payment = {
   id: string
@@ -20,35 +19,6 @@ type PaymentFormData = {
   amount: number
   paid_at?: string // ISO timestamp string, defaults to NOW()
   reference?: string
-}
-
-/**
- * Helper: Get organization_id from slug and validate user membership
- */
-async function getOrgFromSlug(slug: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/signin')
-  }
-
-  const memberships = await getUserMemberships()
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  const membership = memberships.find((m) => m.organization?.slug === slug)
-  if (!membership || !membership.organization) {
-    return { error: 'Organization not found or access denied' }
-  }
-
-  return {
-    organizationId: membership.organization.id,
-    role: membership.role,
-  }
 }
 
 /**
@@ -70,15 +40,15 @@ export async function listPayments(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) {
+    return { data: null, error: orgRes.error }
   }
 
   let query = supabase
     .from('payments')
     .select('*')
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (rentPeriodId) {
     query = query.eq('rent_period_id', rentPeriodId)
@@ -110,13 +80,13 @@ export async function createPayment(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) {
+    return { data: null, error: orgRes.error }
   }
 
   // Validate role: OWNER, MANAGER, or OPS can create
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -134,7 +104,7 @@ export async function createPayment(
     .from('rent_periods')
     .select('id, organization_id, status')
     .eq('id', formData.rent_period_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentPeriodError || !rentPeriod) {
@@ -145,7 +115,7 @@ export async function createPayment(
   const { data: payment, error: paymentError } = await supabase
     .from('payments')
     .insert({
-      organization_id: orgResult.organizationId,
+      organization_id: orgRes.data.organizationId,
       rent_period_id: formData.rent_period_id,
       amount: formData.amount,
       paid_at: formData.paid_at || new Date().toISOString(),
@@ -164,7 +134,7 @@ export async function createPayment(
     .from('rent_periods')
     .update({ status: 'PAID' })
     .eq('id', formData.rent_period_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (updateError) {
     console.error('Error updating rent period status:', updateError)
@@ -193,13 +163,13 @@ export async function updatePayment(
     return { data: null, error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { data: null, error: orgResult.error }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) {
+    return { data: null, error: orgRes.error }
   }
 
   // Validate role: OWNER, MANAGER, or OPS can update
-  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgResult.role)) {
+  if (!['OWNER', 'MANAGER', 'OPS'].includes(orgRes.data.role)) {
     return { data: null, error: 'Insufficient permissions' }
   }
 
@@ -208,7 +178,7 @@ export async function updatePayment(
     .from('payments')
     .select('id, organization_id, rent_period_id')
     .eq('id', paymentId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (paymentError || !existingPayment) {
@@ -243,7 +213,7 @@ export async function updatePayment(
     .from('payments')
     .update(updateData)
     .eq('id', paymentId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .select()
     .single()
 
@@ -271,13 +241,13 @@ export async function deletePayment(
     return { error: 'Not authenticated' }
   }
 
-  const orgResult = await getOrgFromSlug(orgSlug)
-  if ('error' in orgResult) {
-    return { error: orgResult.error }
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) {
+    return { error: orgRes.error }
   }
 
   // Validate role: Only OWNER can delete
-  if (orgResult.role !== 'OWNER') {
+  if (orgRes.data.role !== 'OWNER') {
     return { error: 'Only organization owners can delete payments' }
   }
 
@@ -286,7 +256,7 @@ export async function deletePayment(
     .from('payments')
     .select('id, organization_id, rent_period_id')
     .eq('id', paymentId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (paymentError || !payment) {
@@ -298,7 +268,7 @@ export async function deletePayment(
     .from('rent_periods')
     .select('id, due_date, status')
     .eq('id', payment.rent_period_id)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
     .single()
 
   if (rentPeriodError || !rentPeriod) {
@@ -311,7 +281,7 @@ export async function deletePayment(
     .select('id')
     .eq('rent_period_id', payment.rent_period_id)
     .neq('id', paymentId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (otherPaymentsError) {
     console.error('Error checking other payments:', otherPaymentsError)
@@ -323,7 +293,7 @@ export async function deletePayment(
     .from('payments')
     .delete()
     .eq('id', paymentId)
-    .eq('organization_id', orgResult.organizationId)
+    .eq('organization_id', orgRes.data.organizationId)
 
   if (deleteError) {
     console.error('Error deleting payment:', deleteError)
@@ -344,7 +314,7 @@ export async function deletePayment(
       .from('rent_periods')
       .update({ status: newStatus })
       .eq('id', payment.rent_period_id)
-      .eq('organization_id', orgResult.organizationId)
+      .eq('organization_id', orgRes.data.organizationId)
 
     if (updateError) {
       console.error('Error reverting rent period status:', updateError)

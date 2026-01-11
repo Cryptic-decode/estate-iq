@@ -10,8 +10,8 @@ import { CURRENCY_OPTIONS } from '@/lib/utils/currency'
 
 const fadeUp = {
   initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18, ease: 'easeOut' } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12, ease: 'easeIn' } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
+  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
 }
 
 export function SettingsManager({
@@ -117,7 +117,9 @@ export function SettingsManager({
             <AnimatePresence initial={false}>
               {error && (
                 <motion.div
-                  {...fadeUp}
+                  initial={fadeUp.initial}
+                  animate={fadeUp.animate}
+                  exit={fadeUp.exit}
                   className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
                 >
                   {error}
@@ -125,7 +127,9 @@ export function SettingsManager({
               )}
               {success && (
                 <motion.div
-                  {...fadeUp}
+                  initial={fadeUp.initial}
+                  animate={fadeUp.animate}
+                  exit={fadeUp.exit}
                   className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-200"
                 >
                   {success}
