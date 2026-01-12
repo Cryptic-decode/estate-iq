@@ -197,11 +197,11 @@ export async function getBuildingRollups(orgSlug: string): Promise<{
           },
         } satisfies RollupPeriodRow
       })
-      .filter(Boolean) ?? []
+      .filter((r): r is RollupPeriodRow => r !== null) ?? []
 
   const byBuilding = new Map<string, BuildingRollupRow>()
 
-  for (const r of rows as RollupPeriodRow[]) {
+  for (const r of rows) {
     const existing =
       byBuilding.get(r.building.id) ??
       ({

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { generateSlug, generateUniqueSlug } from '@/lib/utils/slug'
+import { createAuditLog } from '@/app/actions/audit-logs'
 
 type OrganizationRef = {
   id: string
