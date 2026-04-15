@@ -3,12 +3,21 @@
 import { useEffect, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { AlertCircle, Clock, Receipt, Building2, Home, User, Calendar, Wallet } from 'lucide-react'
+import { AlertCircle, Clock, Receipt, Building2, Home, User, Calendar, Wallet, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getOverdueRentPeriods, getDueTodayRentPeriods, type OverdueRentPeriod, type DueTodayRentPeriod } from '@/app/actions/follow-ups'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Select, type SelectOption } from '@/components/ui/select'
+import {
+  getOverdueRentPeriods,
+  getDueTodayRentPeriods,
+  sendReminderEmail,
+  type OverdueRentPeriod,
+  type DueTodayRentPeriod,
+  type ReminderTone,
+} from '@/app/actions/follow-ups'
 import { formatCurrency } from '@/lib/utils/currency'
 
 const fadeUp = {
@@ -16,6 +25,12 @@ const fadeUp = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
   exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
 }
+
+const toneOptions: SelectOption[] = [
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'urgent', label: 'Urgent' },
+]
 
 export function FollowUpQueue({
   orgSlug,
@@ -31,6 +46,13 @@ export function FollowUpQueue({
   const [overduePeriods, setOverduePeriods] = useState<OverdueRentPeriod[]>([])
   const [dueTodayPeriods, setDueTodayPeriods] = useState<DueTodayRentPeriod[]>([])
   const [activeTab, setActiveTab] = useState<'overdue' | 'due-today'>('overdue')
+  const [reminderTone, setReminderTone] = useState<ReminderTone>('friendly')
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sendTarget, setSendTarget] = useState<{
+    rentPeriodId: string
+    tenantName: string
+    tenantEmail: string
+  } | null>(null)
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -72,6 +94,7 @@ export function FollowUpQueue({
   const displayPeriods = activeTab === 'overdue' ? overduePeriods : dueTodayPeriods
   const hasOverdue = overduePeriods.length > 0
   const hasDueToday = dueTodayPeriods.length > 0
+  const toneLabel = toneOptions.find((o) => o.value === reminderTone)?.label || 'Friendly'
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
@@ -91,9 +114,28 @@ export function FollowUpQueue({
                 Review overdue and due today periods. Record payments or take follow-up actions.
               </CardDescription>
             </div>
-            <Button variant="secondary" size="sm" onClick={refresh} disabled={isPending || isLoading} loading={isLoading}>
-              Refresh
-            </Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+              <div className="w-full sm:w-44">
+                <Select
+                  label="Tone"
+                  options={toneOptions}
+                  value={toneOptions.find((o) => o.value === reminderTone) ?? toneOptions[0]}
+                  onChange={(opt) => setReminderTone(((opt?.value || 'friendly') as ReminderTone) ?? 'friendly')}
+                  isDisabled={isPending || isLoading}
+                  isSearchable={false}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={refresh}
+                disabled={isPending || isLoading}
+                loading={isLoading}
+                className="shrink-0"
+              >
+                Refresh
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Tabs */}
@@ -305,6 +347,24 @@ export function FollowUpQueue({
                                 Record payment
                               </Button>
                             </Link>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="w-full sm:w-auto"
+                              disabled={isPending || !tenant.email}
+                              onClick={() => {
+                                if (!tenant.email) return
+                                setSendTarget({
+                                  rentPeriodId: period.id,
+                                  tenantName: tenant.full_name,
+                                  tenantEmail: tenant.email,
+                                })
+                                setSendConfirmOpen(true)
+                              }}
+                            >
+                              <Mail className="mr-1.5 h-4 w-4" />
+                              Send reminder
+                            </Button>
                             <Link href={`/app/org/${orgSlug}/rent-periods`}>
                               <Button variant="secondary" size="sm" className="w-full sm:w-auto" disabled={isPending}>
                                 <Wallet className="mr-1.5 h-4 w-4" />
@@ -322,6 +382,37 @@ export function FollowUpQueue({
           </CardContent>
         </Card>
       </motion.div>
+
+      <ConfirmDialog
+        open={sendConfirmOpen}
+        onClose={() => {
+          if (isPending) return
+          setSendConfirmOpen(false)
+          setSendTarget(null)
+        }}
+        onConfirm={() => {
+          if (!sendTarget) return
+          startTransition(async () => {
+            const res = await sendReminderEmail(orgSlug, sendTarget.rentPeriodId, reminderTone)
+            if (res.success) {
+              toast.success(`Reminder sent to ${sendTarget.tenantEmail}`)
+            } else {
+              toast.error(res.error || 'Failed to send reminder')
+            }
+            setSendConfirmOpen(false)
+            setSendTarget(null)
+          })
+        }}
+        title="Send reminder email?"
+        description={
+          sendTarget
+            ? `This will send a ${toneLabel.toLowerCase()} reminder email to ${sendTarget.tenantName} (${sendTarget.tenantEmail}). Continue?`
+            : 'This will send a reminder email. Continue?'
+        }
+        confirmText="Send email"
+        cancelText="Cancel"
+        loading={isPending}
+      />
     </div>
   )
 }

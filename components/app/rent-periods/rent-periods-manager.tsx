@@ -2,18 +2,20 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter, Receipt } from 'lucide-react'
+import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter, Receipt, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, type SelectOption } from '@/components/ui/select'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { listRentPeriods, updateRentPeriodStatus, generateNextRentPeriod } from '@/app/actions/rent-periods'
 import { listRentConfigs } from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
+import { sendReminderEmail, type ReminderTone } from '@/app/actions/follow-ups'
 import { formatCurrency } from '@/lib/utils/currency'
 import Link from 'next/link'
 
@@ -53,6 +55,8 @@ type Unit = {
 type Tenant = {
   id: string
   full_name: string
+  email: string | null
+  phone: string | null
 }
 
 type Building = {
@@ -99,6 +103,22 @@ export function RentPeriodsManager({
   const [filterRentConfigId, setFilterRentConfigId] = useState<string>('')
   const [generateRentConfigId, setGenerateRentConfigId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [reminderTone, setReminderTone] = useState<ReminderTone>('friendly')
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sendTarget, setSendTarget] = useState<{
+    rentPeriodId: string
+    label: string
+    tenantEmail: string | null
+  } | null>(null)
+
+  const toneOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'friendly', label: 'Friendly tone' },
+      { value: 'formal', label: 'Formal tone' },
+      { value: 'urgent', label: 'Urgent tone' },
+    ],
+    []
+  )
 
   // Filter and sort rent periods (prioritize overdue, then by days_overdue)
   const filteredRentPeriods = useMemo(() => {
@@ -453,6 +473,16 @@ export function RentPeriodsManager({
                   placeholder="All rent schedules"
                 />
               </div>
+              <div className="flex-1">
+                <Select
+                  options={toneOptions}
+                  value={toneOptions.find((o) => o.value === reminderTone) ?? toneOptions[0]}
+                  onChange={(opt) => setReminderTone(((opt?.value || 'friendly') as ReminderTone) ?? 'friendly')}
+                  isDisabled={isPending}
+                  isSearchable={false}
+                  placeholder="Reminder tone"
+                />
+              </div>
             </div>
 
             <AnimatePresence initial={false}>
@@ -565,6 +595,25 @@ export function RentPeriodsManager({
                             <Button
                               variant="secondary"
                               size="sm"
+                              onClick={() => {
+                                const config = getRentConfig(rp.rent_config_id)
+                                const occupancy = config ? occupancies.find((o) => o.id === config.occupancy_id) : null
+                                const tenant = occupancy ? tenants.find((t) => t.id === occupancy.tenant_id) : null
+                                setSendTarget({
+                                  rentPeriodId: rp.id,
+                                  label: config ? getOccupancyLabel(config.occupancy_id) : 'this rent period',
+                                  tenantEmail: tenant?.email ?? null,
+                                })
+                                setSendConfirmOpen(true)
+                              }}
+                              disabled={isPending || isLoading}
+                            >
+                              <Mail className="mr-1.5 h-4 w-4" />
+                              Send reminder
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
                               onClick={() => onStatusChange(rp.id, 'PAID')}
                               disabled={isPending || isLoading}
                               loading={isPending}
@@ -594,6 +643,37 @@ export function RentPeriodsManager({
           </CardContent>
         </Card>
       </motion.div>
+
+      <ConfirmDialog
+        open={sendConfirmOpen}
+        onClose={() => {
+          if (isPending) return
+          setSendConfirmOpen(false)
+          setSendTarget(null)
+        }}
+        onConfirm={() => {
+          if (!sendTarget) return
+          startTransition(async () => {
+            const res = await sendReminderEmail(orgSlug, sendTarget.rentPeriodId, reminderTone)
+            if (res.success) {
+              toast.success(`Reminder sent${sendTarget.tenantEmail ? ` to ${sendTarget.tenantEmail}` : ''}`)
+            } else {
+              toast.error(res.error || 'Failed to send reminder')
+            }
+            setSendConfirmOpen(false)
+            setSendTarget(null)
+          })
+        }}
+        title="Send reminder email?"
+        description={
+          sendTarget
+            ? `This will send a ${reminderTone} reminder email for ${sendTarget.label}${sendTarget.tenantEmail ? ` to ${sendTarget.tenantEmail}` : ''}. Continue?`
+            : 'This will send a reminder email. Continue?'
+        }
+        confirmText="Send email"
+        cancelText="Cancel"
+        loading={isPending}
+      />
     </div>
   )
 }
