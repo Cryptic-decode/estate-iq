@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Building2, Download, FileSpreadsheet, MapPin, Pencil, Trash2, Upload } from 'lucide-react'
+import { Building2, Download, MapPin, Pencil, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
@@ -69,8 +69,8 @@ export function BuildingsManager({
   const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [importFile, setImportFile] = useState<File | null>(null)
-  const [importPreview, setImportPreview] = useState<BuildingImportPreview | null>(null)
-  const [isPreviewingImport, setIsPreviewingImport] = useState(false)
+  const [importValidation, setImportValidation] = useState<BuildingImportPreview | null>(null)
+  const [isValidatingImport, setIsValidatingImport] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual')
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; building: Building | null }>({
@@ -83,8 +83,8 @@ export function BuildingsManager({
     [name, address, isPending]
   )
   const invalidPreviewRows = useMemo(
-    () => (importPreview?.rows ?? []).filter((row) => row.status === 'invalid'),
-    [importPreview]
+    () => (importValidation?.rows ?? []).filter((row) => row.status === 'invalid'),
+    [importValidation]
   )
 
   const resetForm = () => {
@@ -191,7 +191,7 @@ export function BuildingsManager({
 
   const onImportFileChange = (file: File | null) => {
     setImportFile(file)
-    setImportPreview(null)
+    setImportValidation(null)
   }
 
   const onDownloadTemplate = () => {
@@ -206,27 +206,27 @@ export function BuildingsManager({
     XLSX.writeFile(workbook, 'buildings-import-template.xlsx')
   }
 
-  const onPreviewImport = () => {
+  const onValidateImport = () => {
     if (!importFile) {
       toast.error('Select an .xlsx file first.')
       return
     }
 
-    setIsPreviewingImport(true)
+    setIsValidatingImport(true)
     startTransition(async () => {
       const res = await previewBuildingImport(orgSlug, importFile)
-      setIsPreviewingImport(false)
+      setIsValidatingImport(false)
       if (res.error || !res.data) {
-        toast.error(res.error ?? 'Failed to preview import')
-        setImportPreview(null)
+        toast.error(res.error ?? 'Failed to validate file')
+        setImportValidation(null)
         return
       }
-      setImportPreview(res.data)
+      setImportValidation(res.data)
       if (res.data.invalidCount > 0) {
-        toast.warning('Preview completed with validation errors.')
+        toast.warning('Validation completed with errors.')
         return
       }
-      toast.success('Preview completed. Ready to import.')
+      toast.success('Validation completed. Ready to import.')
     })
   }
 
@@ -242,7 +242,7 @@ export function BuildingsManager({
       setIsImporting(false)
       if (res.error) {
         if (res.data?.rows) {
-          setImportPreview({
+          setImportValidation({
             rows: res.data.rows,
             totalRows: res.data.totalRows,
             validCount: res.data.rows.filter((r) => r.status === 'valid').length,
@@ -258,7 +258,7 @@ export function BuildingsManager({
       }
 
       setImportFile(null)
-      setImportPreview(null)
+      setImportValidation(null)
       refresh()
       toast.success(`Imported ${res.data.insertedCount} building(s) successfully.`)
     })
@@ -415,7 +415,7 @@ export function BuildingsManager({
                       variant={entryMode === 'individual' ? 'primary' : 'tertiary'}
                       size="sm"
                       onClick={() => setEntryMode('individual')}
-                      disabled={isPending || isPreviewingImport || isImporting}
+                      disabled={isPending || isValidatingImport || isImporting}
                       fullWidth
                     >
                       Individual
@@ -424,7 +424,7 @@ export function BuildingsManager({
                       variant={entryMode === 'bulk' ? 'primary' : 'tertiary'}
                       size="sm"
                       onClick={() => setEntryMode('bulk')}
-                      disabled={isPending || isPreviewingImport || isImporting}
+                      disabled={isPending || isValidatingImport || isImporting}
                       fullWidth
                     >
                       Bulk upload
@@ -471,7 +471,7 @@ export function BuildingsManager({
                         variant="secondary"
                         size="sm"
                         onClick={onDownloadTemplate}
-                        disabled={isPending || isPreviewingImport || isImporting}
+                        disabled={isPending || isValidatingImport || isImporting}
                         fullWidth
                       >
                         <Download className="mr-2 h-4 w-4" />
@@ -484,20 +484,20 @@ export function BuildingsManager({
                         type="file"
                         accept=".xlsx"
                         onChange={(e) => onImportFileChange(e.target.files?.[0] ?? null)}
-                        disabled={isPending || isPreviewingImport || isImporting}
+                        disabled={isPending || isValidatingImport || isImporting}
                       />
 
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Button
                           variant="secondary"
                           size="sm"
-                          onClick={onPreviewImport}
-                          disabled={!importFile || isPending || isPreviewingImport || isImporting}
-                          loading={isPreviewingImport}
+                          onClick={onValidateImport}
+                          disabled={!importFile || isPending || isValidatingImport || isImporting}
+                          loading={isValidatingImport}
                           fullWidth
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Preview
+                          Validate file
                         </Button>
                         <Button
                           variant="primary"
@@ -505,10 +505,10 @@ export function BuildingsManager({
                           onClick={onRunImport}
                           disabled={
                             !importFile ||
-                            !importPreview ||
-                            importPreview.invalidCount > 0 ||
+                            !importValidation ||
+                            importValidation.invalidCount > 0 ||
                             isPending ||
-                            isPreviewingImport ||
+                            isValidatingImport ||
                             isImporting
                           }
                           loading={isImporting}
@@ -518,16 +518,16 @@ export function BuildingsManager({
                         </Button>
                       </div>
 
-                      {importPreview ? (
+                      {importValidation ? (
                         <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
                           <div className="text-zinc-700 dark:text-zinc-200">
-                            Rows: <span className="font-medium">{importPreview.totalRows}</span> | Valid:{' '}
+                            Rows: <span className="font-medium">{importValidation.totalRows}</span> | Valid:{' '}
                             <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                              {importPreview.validCount}
+                              {importValidation.validCount}
                             </span>{' '}
                             | Invalid:{' '}
                             <span className="font-medium text-red-600 dark:text-red-400">
-                              {importPreview.invalidCount}
+                              {importValidation.invalidCount}
                             </span>
                           </div>
                           {invalidPreviewRows.length > 0 ? (
