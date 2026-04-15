@@ -2,15 +2,23 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Building2, Pencil, Trash2, Filter } from 'lucide-react'
+import { Home, Building2, Pencil, Trash2, Filter, Upload, Download } from 'lucide-react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { createUnit, deleteUnit, listUnits, updateUnit } from '@/app/actions/units'
+import {
+  createUnit,
+  deleteUnit,
+  importUnitsFromXlsx,
+  listUnits,
+  updateUnit,
+  validateUnitsImport,
+} from '@/app/actions/units'
 import { listBuildings } from '@/app/actions/buildings'
 
 type Unit = {
@@ -26,6 +34,21 @@ type Building = {
   id: string
   name: string
   address: string | null
+}
+
+type UnitImportRowResult = {
+  rowNumber: number
+  building_name: string
+  unit_number: string
+  status: 'valid' | 'invalid'
+  error: string | null
+}
+
+type UnitImportValidation = {
+  rows: UnitImportRowResult[]
+  totalRows: number
+  validCount: number
+  invalidCount: number
 }
 
 const fadeUp = {
@@ -53,9 +76,14 @@ export function UnitsManager({
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual')
 
   const [buildingId, setBuildingId] = useState<SelectOption | null>(null)
   const [unitNumber, setUnitNumber] = useState('')
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importValidation, setImportValidation] = useState<UnitImportValidation | null>(null)
+  const [isValidatingImport, setIsValidatingImport] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; unit: Unit | null }>({
     open: false,
@@ -100,6 +128,11 @@ export function UnitsManager({
     setUnitNumber('')
     setError(null)
   }
+
+  const invalidImportRows = useMemo(
+    () => (importValidation?.rows ?? []).filter((row) => row.status === 'invalid'),
+    [importValidation]
+  )
 
   const refresh = () => {
     setIsLoading(true)
@@ -208,6 +241,82 @@ export function UnitsManager({
       if (editingId === u.id) resetForm()
       refresh()
       toast.success(`Unit "${u.unit_number}" deleted successfully.`)
+    })
+  }
+
+  const onImportFileChange = (file: File | null) => {
+    setImportFile(file)
+    setImportValidation(null)
+  }
+
+  const onDownloadTemplate = () => {
+    const workbook = XLSX.utils.book_new()
+    const templateRows = [
+      ['building_name', 'unit_number'],
+      ['Oceanview Apartments', '101'],
+      ['Oceanview Apartments', '102'],
+      ['Maple Heights', 'A-05'],
+    ]
+    const worksheet = XLSX.utils.aoa_to_sheet(templateRows)
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Units')
+    XLSX.writeFile(workbook, 'units-import-template.xlsx')
+  }
+
+  const onValidateImport = () => {
+    if (!importFile) {
+      toast.error('Select an .xlsx file first.')
+      return
+    }
+
+    setIsValidatingImport(true)
+    startTransition(async () => {
+      const res = await validateUnitsImport(orgSlug, importFile)
+      setIsValidatingImport(false)
+      if (res.error || !res.data) {
+        toast.error(res.error ?? 'Failed to validate file')
+        setImportValidation(null)
+        return
+      }
+      setImportValidation(res.data)
+      if (res.data.invalidCount > 0) {
+        toast.warning('Validation completed with errors.')
+        return
+      }
+      toast.success('Validation completed. Ready to import.')
+    })
+  }
+
+  const onRunImport = () => {
+    if (!importFile) {
+      toast.error('Select an .xlsx file first.')
+      return
+    }
+
+    setIsImporting(true)
+    startTransition(async () => {
+      const res = await importUnitsFromXlsx(orgSlug, importFile)
+      setIsImporting(false)
+      if (res.error) {
+        toast.error(res.error)
+        if (res.data?.rows) {
+          setImportValidation({
+            rows: res.data.rows,
+            totalRows: res.data.totalRows,
+            validCount: res.data.rows.filter((r) => r.status === 'valid').length,
+            invalidCount: res.data.rows.filter((r) => r.status === 'invalid').length,
+          })
+        }
+        return
+      }
+      if (!res.data) {
+        toast.error('Import failed.')
+        return
+      }
+
+      setImportFile(null)
+      setImportValidation(null)
+      refresh()
+      toast.success(`Imported ${res.data.insertedCount} unit(s) successfully.`)
     })
   }
 
@@ -373,10 +482,10 @@ export function UnitsManager({
           {/* Form */}
           <Card>
             <CardHeader>
-              <CardTitle>{mode === 'create' ? 'Add a unit' : 'Edit unit'}</CardTitle>
+              <CardTitle>{mode === 'create' ? 'Add units' : 'Edit unit'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Create a unit record and assign it to a building.'
+                  ? 'Switch between individual entry and bulk upload.'
                   : 'Update the unit details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
@@ -385,12 +494,159 @@ export function UnitsManager({
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
                   <p>Create a building first before adding units.</p>
                 </div>
+              ) : mode === 'create' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-1 dark:border-zinc-800">
+                    <Button
+                      variant={entryMode === 'individual' ? 'primary' : 'tertiary'}
+                      size="sm"
+                      onClick={() => setEntryMode('individual')}
+                      disabled={isPending || isValidatingImport || isImporting}
+                      fullWidth
+                    >
+                      Individual
+                    </Button>
+                    <Button
+                      variant={entryMode === 'bulk' ? 'primary' : 'tertiary'}
+                      size="sm"
+                      onClick={() => setEntryMode('bulk')}
+                      disabled={isPending || isValidatingImport || isImporting}
+                      fullWidth
+                    >
+                      Bulk upload
+                    </Button>
+                  </div>
+
+                  {entryMode === 'individual' ? (
+                    <div className="space-y-4">
+                      <Select
+                        label="Building"
+                        options={formBuildingOptions}
+                        value={buildingId}
+                        onChange={(v) => setBuildingId(v)}
+                        isDisabled={isPending}
+                        placeholder="Select a building"
+                        required
+                      />
+
+                      <Input
+                        id="unit-number"
+                        label="Unit number"
+                        placeholder="e.g., 101, A-5, Suite 200"
+                        value={unitNumber}
+                        onChange={(e) => setUnitNumber(e.target.value)}
+                        disabled={isPending}
+                        required
+                      />
+
+                      <Button
+                        variant="primary"
+                        size="md"
+                        onClick={onSubmit}
+                        disabled={!canSubmit}
+                        loading={isPending}
+                        fullWidth
+                      >
+                        Create unit
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                        Upload a <span className="font-medium">.xlsx</span> file with required headers:
+                        <span className="font-medium"> building_name, unit_number</span>.
+                      </p>
+
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={onDownloadTemplate}
+                        disabled={isPending || isValidatingImport || isImporting}
+                        fullWidth
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Download sample sheet
+                      </Button>
+
+                      <Input
+                        id="units-import-file"
+                        label="Excel file (.xlsx)"
+                        type="file"
+                        accept=".xlsx"
+                        onChange={(e) => onImportFileChange(e.target.files?.[0] ?? null)}
+                        disabled={isPending || isValidatingImport || isImporting}
+                      />
+
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={onValidateImport}
+                          disabled={!importFile || isPending || isValidatingImport || isImporting}
+                          loading={isValidatingImport}
+                          fullWidth
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Validate file
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={onRunImport}
+                          disabled={
+                            !importFile ||
+                            !importValidation ||
+                            importValidation.invalidCount > 0 ||
+                            isPending ||
+                            isValidatingImport ||
+                            isImporting
+                          }
+                          loading={isImporting}
+                          fullWidth
+                        >
+                          Import
+                        </Button>
+                      </div>
+
+                      {importValidation ? (
+                        <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+                          <div className="text-zinc-700 dark:text-zinc-200">
+                            Rows: <span className="font-medium">{importValidation.totalRows}</span> | Valid:{' '}
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                              {importValidation.validCount}
+                            </span>{' '}
+                            | Invalid:{' '}
+                            <span className="font-medium text-red-600 dark:text-red-400">
+                              {importValidation.invalidCount}
+                            </span>
+                          </div>
+                          {invalidImportRows.length > 0 ? (
+                            <div className="mt-2 space-y-1 text-xs text-red-700 dark:text-red-300">
+                              {invalidImportRows.slice(0, 5).map((row) => (
+                                <p key={`${row.rowNumber}-${row.building_name}-${row.unit_number}`}>
+                                  Row {row.rowNumber}: {row.error}
+                                </p>
+                              ))}
+                              {invalidImportRows.length > 5 ? (
+                                <p>...and {invalidImportRows.length - 5} more error(s).</p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                              All rows are valid. You can run import now.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               ) : (
-                <>
+                <div className="space-y-4">
                   <Select
                     label="Building"
                     options={formBuildingOptions}
-                      value={buildingId}
+                    value={buildingId}
                     onChange={(v) => setBuildingId(v)}
                     isDisabled={isPending}
                     placeholder="Select a building"
@@ -407,31 +663,27 @@ export function UnitsManager({
                     required
                   />
 
-                  <div className="flex items-center gap-2 pt-1">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      onClick={onSubmit}
-                      disabled={!canSubmit}
-                      loading={isPending}
-                      fullWidth
-                    >
-                      {mode === 'create' ? 'Create unit' : 'Save changes'}
-                    </Button>
-                  </div>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={onSubmit}
+                    disabled={!canSubmit}
+                    loading={isPending}
+                    fullWidth
+                  >
+                    Save changes
+                  </Button>
 
-                  {mode === 'edit' ? (
-                    <Button
-                      variant="tertiary"
-                      size="sm"
-                      onClick={resetForm}
-                      disabled={isPending}
-                      className="w-full"
-                    >
-                      Cancel editing
-                    </Button>
-                  ) : null}
-                </>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onClick={resetForm}
+                    disabled={isPending}
+                    className="w-full"
+                  >
+                    Cancel editing
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

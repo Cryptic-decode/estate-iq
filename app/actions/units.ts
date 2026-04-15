@@ -278,6 +278,25 @@ export async function createUnit(
     return { data: null, error: 'Building not found or does not belong to this organization' }
   }
 
+  const normalizedNewUnitNumber = normalizeUnitNumber(formData.unit_number)
+  const { data: existingUnits, error: duplicateCheckError } = await supabase
+    .from('units')
+    .select('unit_number')
+    .eq('organization_id', orgRes.data.organizationId)
+    .eq('building_id', formData.building_id)
+
+  if (duplicateCheckError) {
+    console.error('Error checking unit duplicates:', duplicateCheckError)
+    return { data: null, error: 'Failed to validate unit number' }
+  }
+
+  const duplicateExists = (existingUnits ?? []).some(
+    (u) => normalizeUnitNumber(u.unit_number) === normalizedNewUnitNumber
+  )
+  if (duplicateExists) {
+    return { data: null, error: 'A unit with this number already exists in the selected building' }
+  }
+
   const { data: unit, error } = await supabase
     .from('units')
     .insert({
@@ -501,6 +520,26 @@ export async function updateUnit(
 
   if (buildingError || !building) {
     return { data: null, error: 'Building not found or does not belong to this organization' }
+  }
+
+  const normalizedNewUnitNumber = normalizeUnitNumber(formData.unit_number)
+  const { data: siblingUnits, error: duplicateCheckError } = await supabase
+    .from('units')
+    .select('id, unit_number')
+    .eq('organization_id', orgRes.data.organizationId)
+    .eq('building_id', formData.building_id)
+    .neq('id', unitId)
+
+  if (duplicateCheckError) {
+    console.error('Error checking unit duplicates:', duplicateCheckError)
+    return { data: null, error: 'Failed to validate unit number' }
+  }
+
+  const duplicateExists = (siblingUnits ?? []).some(
+    (u) => normalizeUnitNumber(u.unit_number) === normalizedNewUnitNumber
+  )
+  if (duplicateExists) {
+    return { data: null, error: 'A unit with this number already exists in the selected building' }
   }
 
   const { data: unit, error } = await supabase
