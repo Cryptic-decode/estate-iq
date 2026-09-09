@@ -45,6 +45,7 @@ You can also run these migrations directly in your Supabase SQL editor or via ps
 3. `003_buildings.sql` through `009_payments.sql` (domain tables)
 4. `010_fix_memberships_rls_recursion.sql` (recommended if you hit membership fetch errors)
 5. `011_add_currency_to_organizations.sql` (adds currency support, defaults to NGN)
+6. `012_performance_indexes.sql` through `018_reminder_sends_hardening.sql`
 
 ## Verification
 
@@ -61,4 +62,3 @@ After applying migrations, verify:
 - `updated_at` is automatically maintained via triggers
 - RLS policies enforce org isolation at the database level
 - Helper functions (`is_org_member`, `get_user_org_role`) are available for use in future migrations
-

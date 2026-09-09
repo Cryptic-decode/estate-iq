@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Receipt, Calendar, Pencil, Trash2, Filter, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { createPayment, deletePayment, listPayments, updatePayment } from '@/app/actions/payments'
 import { listRentPeriods } from '@/app/actions/rent-periods'
 import { listRentConfigs } from '@/app/actions/rent-configs'
@@ -18,6 +19,7 @@ import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
 import { formatCurrency } from '@/lib/utils/currency'
+import { PageHeader } from '@/components/app/page-header'
 
 type Payment = {
   id: string
@@ -73,12 +75,6 @@ type Building = {
   name: string
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
-
 export function PaymentsManager({
   orgSlug,
   orgName,
@@ -122,7 +118,6 @@ export function PaymentsManager({
   const [amount, setAmount] = useState('')
   const [paidAt, setPaidAt] = useState('')
   const [reference, setReference] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; payment: Payment | null }>({
     open: false,
     payment: null,
@@ -179,24 +174,30 @@ export function PaymentsManager({
     return payments.filter((p) => p.rent_period_id === filterRentPeriodId.value)
   }, [payments, filterRentPeriodId])
 
+  const paymentSummary = useMemo(
+    () => ({
+      records: payments.length,
+      total: payments.reduce((sum, payment) => sum + payment.amount, 0),
+      awaitingPayment: rentPeriods.filter((period) => period.status !== 'PAID').length,
+    }),
+    [payments, rentPeriods]
+  )
+
   // Options for Select components
-  const rentPeriodFilterOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'All rent periods' },
-      ...rentPeriods.map((rp) => ({ value: rp.id, label: getRentPeriodLabel(rp.id) })),
-    ],
-    [rentPeriods, rentConfigs, occupancies, units, tenants, buildings]
-  )
+  const rentPeriodFilterOptions: SelectOption[] = [
+    { value: '', label: 'All rent periods' },
+    ...rentPeriods.map((period) => ({ value: period.id, label: getRentPeriodLabel(period.id) })),
+  ]
 
-  const availableRentPeriodOptions = useMemo<SelectOption[]>(
-    () => availableRentPeriods.map((rp) => ({ value: rp.id, label: getRentPeriodLabel(rp.id) })),
-    [availableRentPeriods, rentConfigs, occupancies, units, tenants, buildings]
-  )
+  const availableRentPeriodOptions: SelectOption[] = availableRentPeriods.map((period) => ({
+    value: period.id,
+    label: getRentPeriodLabel(period.id),
+  }))
 
-  const allRentPeriodOptions = useMemo<SelectOption[]>(
-    () => rentPeriods.map((rp) => ({ value: rp.id, label: getRentPeriodLabel(rp.id) })),
-    [rentPeriods, rentConfigs, occupancies, units, tenants, buildings]
-  )
+  const allRentPeriodOptions: SelectOption[] = rentPeriods.map((period) => ({
+    value: period.id,
+    label: getRentPeriodLabel(period.id),
+  }))
 
   const canSubmit = useMemo(
     () =>
@@ -216,7 +217,6 @@ export function PaymentsManager({
     setAmount('')
     setPaidAt('')
     setReference('')
-    setError(null)
   }
 
   const refresh = () => {
@@ -273,35 +273,34 @@ export function PaymentsManager({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
 
     if (!canSubmit) {
-      setError('Please fill in all required fields.')
+      toast.error('Please fill in all required fields.')
       return
     }
 
     const amountNum = parseFloat(amount)
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
-      setError('Amount must be greater than 0.')
+      toast.error('Amount must be greater than 0.')
       return
     }
 
     if (!paidAt) {
-      setError('Payment date is required.')
+      toast.error('Payment date is required.')
       return
     }
 
     // Convert date to ISO string with time
     const paidAtDate = new Date(paidAt)
     if (isNaN(paidAtDate.getTime())) {
-      setError('Invalid payment date.')
+      toast.error('Invalid payment date.')
       return
     }
 
     startTransition(async () => {
       if (mode === 'create') {
         if (!rentPeriodId || !rentPeriodId.value) {
-          setError('Rent period is required.')
+          toast.error('Rent period is required.')
           return
         }
         const res = await createPayment(orgSlug, {
@@ -351,7 +350,6 @@ export function PaymentsManager({
     setAmount(payment.amount.toString())
     setPaidAt(new Date(payment.paid_at).toISOString().split('T')[0])
     setReference(payment.reference || '')
-    setError(null)
   }
 
   const onDelete = (payment: Payment) => {
@@ -362,7 +360,6 @@ export function PaymentsManager({
     if (!deleteDialog.payment) return
 
     const payment = deleteDialog.payment
-    setError(null)
     setDeleteDialog({ open: false, payment: null })
     startTransition(async () => {
       const res = await deletePayment(orgSlug, payment.id)
@@ -379,47 +376,77 @@ export function PaymentsManager({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Payments</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Record and track rent payments for <span className="font-medium">{orgName}</span>
-          </p>
+        <PageHeader
+          eyebrow="Rent operations"
+          title="Payments"
+          description={`Record rent payments and review payment history for ${orgName}.`}
+          meta={`${paymentSummary.records} records · ${formatCurrency(paymentSummary.total, currency)} recorded · ${paymentSummary.awaitingPayment} awaiting payment`}
+          actions={
+            <Button variant="secondary" onClick={refresh} disabled={isPending || isLoading} loading={isLoading}>
+              Refresh
+            </Button>
+          }
+        />
+
+        <div className="my-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Card className="p-4 sm:p-5">
+            <CardContent>
+              <p className="text-2xl font-semibold tabular-nums text-zinc-950 dark:text-white">{paymentSummary.records}</p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Payment records</p>
+            </CardContent>
+          </Card>
+          <Card className="p-4 sm:p-5">
+            <CardContent>
+              <p className="text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                {formatCurrency(paymentSummary.total, currency)}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Total recorded</p>
+            </CardContent>
+          </Card>
+          <Card className="p-4 sm:p-5">
+            <CardContent>
+              <p className="text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                {paymentSummary.awaitingPayment}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Periods awaiting payment</p>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <CardHeader>
               <div>
                 <CardTitle>Payment records</CardTitle>
                 <CardDescription className="mt-1">
                   View all recorded payments and their linked rent periods.
                 </CardDescription>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={refresh}
-                disabled={isPending || isLoading}
-                loading={isLoading}
-                className="shrink-0"
-              >
-                Refresh
-              </Button>
             </CardHeader>
             <CardContent className="space-y-3">
               {/* Filter */}
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
-                <Filter className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
-                <div className="flex-1">
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                    <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                    Filter payments
+                  </div>
+                  {filterRentPeriodId && (
+                    <Button variant="tertiary" size="sm" onClick={() => setFilterRentPeriodId(null)}>
+                      Reset
+                    </Button>
+                  )}
+                </div>
+                <div>
                   <Select
+                    label="Rent period"
                     options={rentPeriodFilterOptions}
                     value={filterRentPeriodId}
                     onChange={(v) => {
                       setFilterRentPeriodId(v)
-                      setError(null)
                     }}
                     isDisabled={isPending}
                     placeholder="All rent periods"
@@ -427,19 +454,6 @@ export function PaymentsManager({
                   />
                 </div>
               </div>
-
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {isLoading ? (
                 <div className="space-y-3">
@@ -460,34 +474,29 @@ export function PaymentsManager({
                   ))}
                 </div>
               ) : filteredPayments.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Receipt className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    {rentPeriods.length === 0
-                      ? 'Prerequisites needed'
+                <EmptyState
+                  title={
+                    rentPeriods.length === 0
+                      ? 'A rent period is required'
                       : availableRentPeriods.length === 0
-                        ? 'All rent periods paid'
-                        : 'No payments recorded yet'}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {rentPeriods.length === 0
-                      ? 'Generate rent periods first, then record payments for them.'
+                        ? 'All rent periods are paid'
+                        : 'No payments recorded yet'
+                  }
+                  description={
+                    rentPeriods.length === 0
+                      ? 'Generate a rent period before recording a payment.'
                       : availableRentPeriods.length === 0
-                        ? 'All rent periods have been paid. Generate new periods to record more payments.'
-                        : 'Record your first payment using the form on the right.'}
-                  </p>
-                  {availableRentPeriods.length > 0 && (
-                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                      Use the form on the right to get started.
-                    </p>
-                  )}
-                </div>
+                        ? 'There are no unpaid rent periods available for a new payment.'
+                        : 'Record the first payment using the form on this page.'
+                  }
+                  guidance={availableRentPeriods.length > 0 ? 'Use the payment form to get started.' : undefined}
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {filteredPayments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-start justify-between gap-4 bg-white px-4 py-4 transition-colors hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-900/60"
+                      className="flex flex-col gap-4 bg-white px-4 py-4 transition-colors hover:bg-zinc-50 sm:flex-row sm:items-start sm:justify-between dark:bg-zinc-900 dark:hover:bg-zinc-900/60"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -518,7 +527,7 @@ export function PaymentsManager({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -548,7 +557,7 @@ export function PaymentsManager({
           </Card>
 
           {/* Form */}
-          <Card>
+          <Card className="h-fit lg:sticky lg:top-6">
             <CardHeader>
               <CardTitle>{mode === 'create' ? 'Record a payment' : 'Edit payment'}</CardTitle>
               <CardDescription>
@@ -557,13 +566,13 @@ export function PaymentsManager({
                   : 'Update payment details. Note: rent period cannot be changed after creation.'}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               {availableRentPeriods.length === 0 && mode === 'create' ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
                   <p>All rent periods are already paid. Generate new rent periods first.</p>
                 </div>
               ) : (
-                <>
+                <form className="space-y-4" onSubmit={onSubmit}>
                   <Select
                     label="Rent Period"
                     options={mode === 'create' ? availableRentPeriodOptions : allRentPeriodOptions}
@@ -623,7 +632,6 @@ export function PaymentsManager({
                     type="submit"
                     variant="primary"
                     fullWidth
-                    onClick={onSubmit}
                     disabled={!canSubmit}
                     loading={isPending}
                   >
@@ -635,7 +643,7 @@ export function PaymentsManager({
                       Cancel
                     </Button>
                   )}
-                </>
+                </form>
               )}
             </CardContent>
           </Card>

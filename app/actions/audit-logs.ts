@@ -11,13 +11,16 @@ export type AuditActionType =
   | 'MEMBERSHIP_ROLE_CHANGED'
   | 'MEMBERSHIP_CREATED'
   | 'MEMBERSHIP_DELETED'
+  | 'MAINTENANCE_REQUEST_CREATED'
+  | 'MAINTENANCE_REQUEST_STATUS_CHANGED'
+  | 'MAINTENANCE_REQUEST_DELETED'
 
-export type AuditEntityType = 'payment' | 'rent_period' | 'organization' | 'membership'
+export type AuditEntityType = 'payment' | 'rent_period' | 'organization' | 'membership' | 'maintenance_request'
 
 export type AuditLogMetadata = {
-  before?: Record<string, any>
-  after?: Record<string, any>
-  [key: string]: any
+  before?: Record<string, unknown>
+  after?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 /**
@@ -153,6 +156,20 @@ export async function listAuditLogs(
     return { data: null, error: 'Failed to fetch audit logs' }
   }
 
-  return { data: data as any, error: null }
+  return {
+    data: data as Array<{
+      id: string
+      organization_id: string
+      user_id: string | null
+      action_type: AuditActionType
+      entity_type: AuditEntityType
+      entity_id: string | null
+      description: string
+      metadata: AuditLogMetadata | null
+      ip_address: string | null
+      user_agent: string | null
+      created_at: string
+    }>,
+    error: null,
+  }
 }
-

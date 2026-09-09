@@ -1,7 +1,7 @@
 'use client'
 
 import { ReactNode } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { motion, HTMLMotionProps } from 'framer-motion'
 
 interface AuthButtonProps extends Omit<HTMLMotionProps<'button'>, 'children'> {
@@ -27,21 +27,12 @@ export function AuthButton({
     <motion.button
       type="submit"
       disabled={disabled || loading}
-      className={`group relative h-11 w-full overflow-hidden rounded-md bg-zinc-900 px-6 py-3 text-base font-medium text-white transition-all focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-zinc-50 dark:text-zinc-900 sm:h-12 ${className}`}
-      whileHover={!disabled && !loading ? { scale: 1.02 } : {}}
+      className={`group relative h-11 w-full rounded-md bg-primary px-6 py-3 text-base font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 sm:h-12 ${className}`}
+      whileHover={!disabled && !loading ? { y: -1 } : {}}
       whileTap={!disabled && !loading ? { scale: 0.98 } : {}}
       {...props}
     >
-      {/* Gradient Overlay (slides in on hover) */}
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-r from-zinc-700 via-zinc-600 to-zinc-700 dark:from-zinc-200 dark:via-zinc-100 dark:to-zinc-200"
-        initial={{ x: '-100%', opacity: 0 }}
-        whileHover={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-      />
-
-      {/* Content Container */}
-      <div className="relative z-10 flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-2">
         {loading ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -49,18 +40,10 @@ export function AuthButton({
           </>
         ) : (
           <>
-            <motion.span
-              className="flex items-center gap-2"
-              whileHover={{ x: -5 }}
-              transition={{ duration: 0.2 }}
-            >
-              <span>{children || buttonText[variant]}</span>
-              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-            </motion.span>
+            <span>{children || buttonText[variant]}</span>
           </>
         )}
       </div>
     </motion.button>
   )
 }
-

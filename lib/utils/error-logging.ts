@@ -7,7 +7,7 @@ type ErrorContext = {
   userId?: string
   organizationId?: string
   action?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -59,4 +59,3 @@ export function logWarning(message: string, context?: ErrorContext) {
 
   return logData
 }
-

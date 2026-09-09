@@ -1,18 +1,30 @@
 'use client'
 
-import { useMemo, useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, Home, Users, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { motion } from 'framer-motion'
+import { Home, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { createOccupancy, deleteOccupancy, listOccupancies, updateOccupancy } from '@/app/actions/occupancies'
+import { EmptyState } from '@/components/ui/empty-state'
+import { BulkImportPanel } from '@/components/app/bulk-import-panel'
+import { EntryModeSwitch } from '@/components/app/entry-mode-switch'
+import { PageHeader } from '@/components/app/page-header'
+import {
+  createOccupancy,
+  deleteOccupancy,
+  importOccupanciesFromXlsx,
+  listOccupancies,
+  previewOccupancyImport,
+  updateOccupancy,
+} from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
+import { downloadExcelTemplate } from '@/lib/utils/excel-template'
 
 type Occupancy = {
   id: string
@@ -41,10 +53,20 @@ type Building = {
   name: string
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
+type OccupancyImportRowResult = {
+  rowNumber: number
+  building_name: string
+  unit_number: string
+  tenant_name: string
+  status: 'valid' | 'invalid'
+  error: string | null
+}
+
+type OccupancyImportPreview = {
+  rows: OccupancyImportRowResult[]
+  totalRows: number
+  validCount: number
+  invalidCount: number
 }
 
 export function OccupanciesManager({
@@ -73,12 +95,16 @@ export function OccupanciesManager({
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual')
 
   const [unitId, setUnitId] = useState<SelectOption | null>(null)
   const [tenantId, setTenantId] = useState<SelectOption | null>(null)
   const [activeFrom, setActiveFrom] = useState('')
   const [activeTo, setActiveTo] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<OccupancyImportPreview | null>(null)
+  const [isValidatingImport, setIsValidatingImport] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; occupancy: Occupancy | null }>({
     open: false,
     occupancy: null,
@@ -110,31 +136,25 @@ export function OccupanciesManager({
   }, [occupancies, filterUnitId, filterTenantId])
 
   // Options for Select components
-  const unitOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'All units' },
-      ...units.map((u) => ({ value: u.id, label: getUnitName(u.id) })),
-    ],
-    [units, buildings]
-  )
+  const unitOptions: SelectOption[] = [
+    { value: '', label: 'All units' },
+    ...units.map((unit) => ({ value: unit.id, label: getUnitName(unit.id) })),
+  ]
 
-  const tenantOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'All tenants' },
-      ...tenants.map((t) => ({ value: t.id, label: t.full_name })),
-    ],
-    [tenants]
-  )
+  const tenantOptions: SelectOption[] = [
+    { value: '', label: 'All tenants' },
+    ...tenants.map((tenant) => ({ value: tenant.id, label: tenant.full_name })),
+  ]
 
-  const formUnitOptions = useMemo<SelectOption[]>(
-    () => units.map((u) => ({ value: u.id, label: getUnitName(u.id) })),
-    [units, buildings]
-  )
+  const formUnitOptions: SelectOption[] = units.map((unit) => ({
+    value: unit.id,
+    label: getUnitName(unit.id),
+  }))
 
-  const formTenantOptions = useMemo<SelectOption[]>(
-    () => tenants.map((t) => ({ value: t.id, label: t.full_name })),
-    [tenants]
-  )
+  const formTenantOptions: SelectOption[] = tenants.map((tenant) => ({
+    value: tenant.id,
+    label: tenant.full_name,
+  }))
 
   const canSubmit = useMemo(
     () =>
@@ -154,7 +174,6 @@ export function OccupanciesManager({
     setTenantId(null)
     setActiveFrom('')
     setActiveTo('')
-    setError(null)
   }
 
   const refresh = () => {
@@ -192,30 +211,24 @@ export function OccupanciesManager({
     })
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   const onSubmit = () => {
-    setError(null)
-
     if (!unitId || !unitId.value.trim()) {
-      setError('Unit is required.')
+      toast.error('Unit is required.')
       return
     }
 
     if (!tenantId || !tenantId.value.trim()) {
-      setError('Tenant is required.')
+      toast.error('Tenant is required.')
       return
     }
 
     if (!activeFrom.trim()) {
-      setError('Active from date is required.')
+      toast.error('Active from date is required.')
       return
     }
 
     if (activeTo && new Date(activeTo) < new Date(activeFrom)) {
-      setError('Active to date must be after or equal to active from date.')
+      toast.error('Active to date must be after or equal to active from date.')
       return
     }
 
@@ -271,7 +284,6 @@ export function OccupanciesManager({
     setTenantId(tenant ? { value: tenant.id, label: tenant.full_name } : null)
     setActiveFrom(o.active_from)
     setActiveTo(o.active_to || '')
-    setError(null)
   }
 
   const onDelete = (o: Occupancy) => {
@@ -282,9 +294,6 @@ export function OccupanciesManager({
     if (!deleteDialog.occupancy) return
 
     const o = deleteDialog.occupancy
-    const unitName = getUnitName(o.unit_id)
-    const tenantName = getTenantName(o.tenant_id)
-    setError(null)
     setDeleteDialog({ open: false, occupancy: null })
     startTransition(async () => {
       const res = await deleteOccupancy(orgSlug, o.id)
@@ -297,6 +306,76 @@ export function OccupanciesManager({
       toast.success('Occupancy deleted successfully.')
     })
   }
+
+  const onDownloadTemplate = () => {
+    downloadExcelTemplate({
+      filename: 'estateiq-occupancies-sample.xlsx',
+      sheetName: 'Occupancies',
+      headers: ['building_name', 'unit_number', 'tenant_name', 'tenant_email', 'active_from', 'active_to'],
+      examples: [
+        ['Oceanview Apartments', '101', 'Ada Nwosu', 'ada@example.com', '2026-01-01', ''],
+        ['Maple Heights', 'A-05', 'John Doe', '', '2026-02-01', '2027-01-31'],
+      ],
+      requiredHeaders: ['building_name', 'unit_number', 'tenant_name', 'tenant_email', 'active_from', 'active_to'],
+      notes: [
+        'Building, unit, and tenant must already exist in EstateIQ.',
+        'Tenant email is optional, but use it when more than one tenant has the same name.',
+        'Use YYYY-MM-DD dates. Leave active_to blank for an ongoing occupancy.',
+      ],
+    })
+  }
+
+  const onImportFileChange = (file: File | null) => {
+    setImportFile(file)
+    setImportPreview(null)
+  }
+
+  const onValidateImport = () => {
+    if (!importFile) return
+    setIsValidatingImport(true)
+    startTransition(async () => {
+      const res = await previewOccupancyImport(orgSlug, importFile)
+      setIsValidatingImport(false)
+      if (res.error || !res.data) {
+        setImportPreview(null)
+        toast.error(res.error ?? 'Failed to validate occupancy import')
+        return
+      }
+      setImportPreview(res.data)
+      if (res.data.invalidCount > 0) toast.warning('Validation completed with errors.')
+      else toast.success('Validation completed. Ready to import.')
+    })
+  }
+
+  const onRunImport = () => {
+    if (!importFile) return
+    setIsImporting(true)
+    startTransition(async () => {
+      const res = await importOccupanciesFromXlsx(orgSlug, importFile)
+      setIsImporting(false)
+      if (res.error) {
+        if (res.data?.rows) {
+          setImportPreview({
+            rows: res.data.rows,
+            totalRows: res.data.totalRows,
+            validCount: res.data.rows.filter((row) => row.status === 'valid').length,
+            invalidCount: res.data.rows.filter((row) => row.status === 'invalid').length,
+          })
+        }
+        toast.error(res.error)
+        return
+      }
+      setImportFile(null)
+      setImportPreview(null)
+      refresh()
+      toast.success(`Imported ${res.data?.insertedCount ?? 0} occupancies successfully.`)
+    })
+  }
+
+  const invalidImportRows = useMemo(
+    () => (importPreview?.rows ?? []).filter((row) => row.status === 'invalid'),
+    [importPreview]
+  )
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -318,18 +397,11 @@ export function OccupanciesManager({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Occupancies
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Assign tenants to units for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader eyebrow="Portfolio" title="Occupancies" description={`Connect tenants to units and lease dates for ${orgName}.`} meta={`${occupancies.length} ${occupancies.length === 1 ? 'occupancy' : 'occupancies'}`} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -361,7 +433,6 @@ export function OccupanciesManager({
                     value={filterUnitId}
                     onChange={(v) => {
                       setFilterUnitId(v)
-                      setError(null)
                     }}
                     isDisabled={isPending}
                     placeholder="All units"
@@ -375,7 +446,6 @@ export function OccupanciesManager({
                   value={filterTenantId}
                   onChange={(v) => {
                     setFilterTenantId(v)
-                    setError(null)
                   }}
                   isDisabled={isPending}
                   placeholder="All tenants"
@@ -383,19 +453,6 @@ export function OccupanciesManager({
                 />
               </div>
             </div>
-
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {isLoading ? (
                 <div className="space-y-3">
@@ -417,24 +474,15 @@ export function OccupanciesManager({
                   ))}
                 </div>
               ) : filteredOccupancies.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <FileText className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    {units.length === 0 || tenants.length === 0
-                      ? 'Prerequisites needed'
-                      : 'No occupancies yet'}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {units.length === 0 || tenants.length === 0
-                      ? 'Create units and tenants first, then assign them via occupancies.'
-                      : 'Create your first occupancy to assign a tenant to a unit.'}
-                  </p>
-                  {units.length > 0 && tenants.length > 0 && (
-                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                      Use the form on the right to get started.
-                    </p>
-                  )}
-                </div>
+                <EmptyState
+                  title={units.length === 0 || tenants.length === 0 ? 'Units and tenants required' : 'No occupancies yet'}
+                  description={
+                    units.length === 0 || tenants.length === 0
+                      ? 'Create units and tenant records before assigning an occupancy.'
+                      : 'Assign a tenant to a unit to create the first occupancy.'
+                  }
+                  guidance={units.length > 0 && tenants.length > 0 ? 'Use the form on this page to get started.' : undefined}
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {filteredOccupancies.map((o) => (
@@ -508,7 +556,7 @@ export function OccupanciesManager({
               <CardTitle>{mode === 'create' ? 'Add an occupancy' : 'Edit occupancy'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Assign a tenant to a unit with a date range.'
+                  ? 'Add one occupancy or upload a completed sample spreadsheet.'
                   : 'Update the occupancy details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
@@ -525,7 +573,36 @@ export function OccupanciesManager({
                 </div>
               ) : (
                 <>
-                  <Select
+                  {mode === 'create' ? (
+                    <EntryModeSwitch
+                      value={entryMode}
+                      onChange={setEntryMode}
+                      disabled={isPending || isValidatingImport || isImporting}
+                    />
+                  ) : null}
+
+                  {mode === 'create' && entryMode === 'bulk' ? (
+                    <BulkImportPanel
+                      fileInputId="occupancy-import-file"
+                      instructions={<>Upload the completed sample. EstateIQ matches each row using <span className="font-medium">building, unit, tenant, and occupancy start date</span>.</>}
+                      file={importFile}
+                      preview={importPreview}
+                      invalidRows={invalidImportRows.map((row) => ({
+                        rowNumber: row.rowNumber,
+                        label: `${row.tenant_name} · ${row.building_name} ${row.unit_number}`,
+                        error: row.error,
+                      }))}
+                      disabled={isPending || isValidatingImport || isImporting}
+                      isValidating={isValidatingImport}
+                      isImporting={isImporting}
+                      onDownloadSample={onDownloadTemplate}
+                      onFileChange={onImportFileChange}
+                      onValidate={onValidateImport}
+                      onImport={onRunImport}
+                    />
+                  ) : (
+                    <>
+                    <Select
                     label="Unit"
                     options={formUnitOptions}
                     value={unitId}
@@ -608,6 +685,8 @@ export function OccupanciesManager({
                       Cancel editing
                     </Button>
                   ) : null}
+                    </>
+                  )}
                 </>
               )}
             </CardContent>
@@ -632,4 +711,3 @@ export function OccupanciesManager({
     </div>
   )
 }
-

@@ -1,15 +1,16 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Shield, RefreshCw, Filter, X } from 'lucide-react'
+import { RefreshCw, Filter, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonLink } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { listAuditLogs, type AuditActionType, type AuditEntityType, type AuditLogMetadata } from '@/app/actions/audit-logs'
+import { PageHeader } from '@/components/app/page-header'
 
 type AuditLogRow = {
   id: string
@@ -114,7 +115,7 @@ export function AuditTrailView({
       }
 
       setError(null)
-      setLogs((res.data as any) ?? [])
+      setLogs(res.data ?? [])
       toast.success('Audit trail refreshed')
 
       if (shouldReset) {
@@ -126,36 +127,24 @@ export function AuditTrailView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Audit trail</h1>
-          </div>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            A history of sensitive changes for <span className="font-medium">{orgName}</span>.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <Link href={`/app/org/${orgSlug}/reports`} className="w-full sm:w-auto">
-            <Button variant="secondary" size="md" className="w-full">
-              Back to reports
-            </Button>
-          </Link>
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={() => refresh()}
-            disabled={isPending || isLoading}
-            loading={isLoading}
-            className="w-full sm:w-auto"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
+      <div className="mb-8">
+        <PageHeader
+          eyebrow="Reports"
+          title="Audit trail"
+          description={`Review sensitive changes and account activity for ${orgName}.`}
+          actions={
+            <>
+              <ButtonLink href={`/app/org/${orgSlug}/reports`} variant="secondary" size="md" className="w-full sm:w-auto">
+                Back to reports
+              </ButtonLink>
+              <Button variant="secondary" size="md" onClick={() => refresh()} disabled={isPending || isLoading} loading={isLoading} className="w-full sm:w-auto">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {error ? (
@@ -232,12 +221,10 @@ export function AuditTrailView({
               ))}
             </div>
           ) : logs.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">No events found</p>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                Try adjusting filters, or perform an action (like recording a payment) and refresh.
-              </p>
-            </div>
+            <EmptyState
+              title="No events found"
+              description="Adjust the filters, or return after an account activity has been recorded."
+            />
           ) : (
             <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
               <div className="grid grid-cols-12 bg-zinc-50 px-4 py-3 text-xs font-medium text-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-300">
@@ -292,5 +279,3 @@ export function AuditTrailView({
     </div>
   )
 }
-
-

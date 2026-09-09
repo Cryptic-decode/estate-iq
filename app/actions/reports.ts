@@ -53,6 +53,11 @@ type RentPeriodRow = {
   rent_config: { amount: number } | null
 }
 
+function firstRelation<T>(relation: T | T[] | null | undefined): T | null {
+  if (Array.isArray(relation)) return relation[0] ?? null
+  return relation ?? null
+}
+
 export async function getDelinquencyAging(orgSlug: string): Promise<{
   data: DelinquencyAgingReport | null
   error: string | null
@@ -83,12 +88,16 @@ export async function getDelinquencyAging(orgSlug: string): Promise<{
   if (error) return { data: null, error: error.message }
 
   const rows: RentPeriodRow[] =
-    (rentPeriods as any[] | null)?.map((rp) => ({
-      id: String(rp.id),
-      status: rp.status as RentPeriodRow['status'],
-      days_overdue: typeof rp.days_overdue === 'number' ? rp.days_overdue : null,
-      rent_config: rp.rent_configs ? { amount: Number(rp.rent_configs.amount) } : null,
-    })) ?? []
+    rentPeriods?.map((rp) => {
+      const rentConfig = firstRelation(rp.rent_configs)
+
+      return {
+        id: String(rp.id),
+        status: rp.status as RentPeriodRow['status'],
+        days_overdue: typeof rp.days_overdue === 'number' ? rp.days_overdue : null,
+        rent_config: rentConfig ? { amount: Number(rentConfig.amount) } : null,
+      }
+    }) ?? []
 
   const buckets: DelinquencyBucket[] = [
     { label: '0–7', minDays: 0, maxDays: 7, unpaidPeriods: 0, unpaidAmount: 0 },
@@ -178,12 +187,12 @@ export async function getBuildingRollups(orgSlug: string): Promise<{
   if (error) return { data: null, error: error.message }
 
   const rows: RollupPeriodRow[] =
-    (rentPeriods as any[] | null)
+    rentPeriods
       ?.map((rp) => {
-        const rc = rp.rent_configs
-        const occ = rc?.occupancies
-        const unit = occ?.units
-        const b = unit?.buildings
+        const rc = firstRelation(rp.rent_configs)
+        const occ = firstRelation(rc?.occupancies)
+        const unit = firstRelation(occ?.units)
+        const b = firstRelation(unit?.buildings)
 
         if (!b?.id || !b?.name) return null
 
@@ -334,8 +343,8 @@ export async function getCollectionRate(
 
   // Calculate total due (sum of all rent period amounts in range)
   const totalDue =
-    (rentPeriods as any[] | null)?.reduce((sum, rp) => {
-      const amount = Number(rp.rent_configs?.amount ?? 0)
+    rentPeriods?.reduce((sum, rp) => {
+      const amount = Number(firstRelation(rp.rent_configs)?.amount ?? 0)
       return sum + amount
     }, 0) ?? 0
 
@@ -343,7 +352,7 @@ export async function getCollectionRate(
 
   // Get rent period IDs that are in our date range
   const periodIdsInRange = new Set(
-    (rentPeriods as any[] | null)?.map((rp) => String(rp.id)) ?? []
+    rentPeriods?.map((rp) => String(rp.id)) ?? []
   )
 
   if (periodIdsInRange.size === 0) {
@@ -381,14 +390,14 @@ export async function getCollectionRate(
 
   // Calculate total collected (sum of payment amounts)
   const totalCollected =
-    (payments as any[] | null)?.reduce((sum, p) => {
+    payments?.reduce((sum, p) => {
       const amount = Number(p.amount ?? 0)
       return sum + amount
     }, 0) ?? 0
 
   // Count unique paid periods (periods that have at least one payment)
   const paidPeriodIds = new Set(
-    (payments as any[] | null)?.map((p) => String(p.rent_period_id)) ?? []
+    payments?.map((p) => String(p.rent_period_id)) ?? []
   )
   const paidPeriodCount = paidPeriodIds.size
 
@@ -412,5 +421,3 @@ export async function getCollectionRate(
 
   return { data: report, error: null }
 }
-
-

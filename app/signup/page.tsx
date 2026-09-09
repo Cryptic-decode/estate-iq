@@ -9,6 +9,7 @@ import { AuthContainer } from '@/components/auth/auth-container'
 import { AuthHero } from '@/components/auth/auth-hero'
 import { AuthCard } from '@/components/auth/auth-card'
 import { AnimatedAuthForm } from '@/components/auth/animated-auth-form'
+import { toast } from 'sonner'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -17,16 +18,16 @@ export default function SignupPage() {
   const [fullName, setFullName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
-    setError(null)
 
     // Validate company name
     if (!companyName || companyName.trim().length === 0) {
-      setError('Company name is required')
+      toast.error('Unable to create account', {
+        description: 'Company name is required.',
+      })
       setLoading(false)
       return
     }
@@ -44,7 +45,9 @@ export default function SignupPage() {
     })
 
     if (signUpError) {
-      setError(signUpError.message)
+      toast.error('Unable to create account', {
+        description: signUpError.message,
+      })
       setLoading(false)
       return
     }
@@ -82,7 +85,6 @@ export default function SignupPage() {
               setCompanyName={setCompanyName}
               onSubmit={handleSignup}
               loading={loading}
-              error={error}
             />
           </AuthCard>
         }

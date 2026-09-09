@@ -10,14 +10,14 @@ interface AuthHeroProps {
 
 const heroContent = {
   signin: {
-    headline: 'Welcome back to',
+    headline: 'Return to a clearer view of',
     supportingText:
-      'Sign in to continue managing your rent intelligence. Track payments, send reminders, and stay on top of your portfolio.',
+      'Sign in to review rent obligations, record payments, manage follow-ups, and understand what needs attention next.',
   },
   signup: {
-    headline: 'Start managing your rent portfolio with',
+    headline: 'Bring your rent operations into',
     supportingText:
-      'Built for real estate companies. Track every payment, automate reminders, and get daily rent intelligence—all in one workspace.',
+      'Create a workspace for your portfolio records, rent tracking, payment operations, follow-ups, and reporting.',
   },
 }
 
@@ -25,20 +25,20 @@ export function AuthHero({ authType, brandName = 'EstateIQ' }: AuthHeroProps) {
   const content = heroContent[authType]
 
   return (
-    <motion.div variants={itemVariants} className="space-y-6">
-      {/* Headline */}
-      <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-5xl lg:text-6xl">
+    <motion.div variants={itemVariants} className="max-w-xl space-y-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-brass">
+        Rent operations, clearly managed
+      </p>
+      <h1 className="font-estate-serif text-4xl leading-tight tracking-[-0.035em] text-foreground sm:text-5xl">
         {content.headline}{' '}
-        <span className="bg-gradient-to-r from-zinc-900 via-zinc-700 to-zinc-900 bg-clip-text text-transparent dark:from-zinc-50 dark:via-zinc-300 dark:to-zinc-50">
+        <span className="text-brand-brass">
           {brandName}
         </span>
       </h1>
 
-      {/* Supporting Paragraph */}
-      <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-300 sm:text-xl lg:text-2xl lg:leading-relaxed">
+      <p className="max-w-lg text-lg leading-8 text-muted-foreground">
         {content.supportingText}
       </p>
     </motion.div>
   )
 }
-

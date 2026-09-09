@@ -136,17 +136,17 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - ✅ Reminder drafts can be generated for manual copy/paste (email/SMS ready).
 - ✅ Priority system highlights critical/high/medium/low priority overdue periods.
 
-## Phase 5 — Reporting + hardening (Internal SaaS readiness) ❌
+## Phase 5 — Reporting + hardening (Internal SaaS readiness) ⚠️
 
 **Goal**: Reliability, observability, and leadership reporting.
 
 **Scope**:
 
-- Reporting views (collection rate, delinquency aging, building rollups) ❌
-- Performance hardening (indexes, query shaping) ⚠️ (basic indexes exist, may need optimization)
-- Audit logs for sensitive actions (membership changes, payment corrections) ❌
-- Error tracking and monitoring ❌
-- Analytics dashboard for leadership ❌
+- Reporting views (collection rate, delinquency aging, building rollups) ✅
+- Performance indexes ✅; production query profiling remains pending
+- Audit logs for payment corrections, rent-period status, currency, and membership changes ✅
+- Error boundaries and logging utility ✅; external monitoring integration remains pending
+- Leadership reporting views ✅
 
 **Done when**:
 
@@ -177,12 +177,12 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 | Phase 2 — Rent definition        | ✅ Complete | 100%       |
 | Phase 3 — Payment capture        | ✅ Complete | 100%       |
 | Phase 4 — Operational workflows  | ✅ Complete | 100%       |
-| Phase 5 — Reporting + hardening  | ✅ Complete | 100%       |
-| Phase 6 — Collection Rate Report | ⏳ Pending  | 0%         |
-| Phase 7 — Reminder Sending       | ⏳ Pending  | 0%         |
+| Phase 5 — Reporting + hardening  | ⚠️ Partial  | 80%        |
+| Phase 6 — Collection Rate Report | ✅ Complete | 100%       |
+| Phase 7 — Email Reminder Sending | ⚠️ Validate | 90%        |
 | Phase 8 — AI Features            | ⏳ Pending  | 0%         |
 
-**Overall MVP Progress**: ~83% complete (Phases 0-5 done, 6-8 remaining)
+**Overall MVP Progress**: core rent operations are complete. Production hardening, email-delivery validation, and Phase 8 remain.
 
 ---
 
@@ -205,7 +205,7 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - [x] Priority tenant/unit highlighting
 - [x] Building-level unpaid view with drill-down
 
-### Phase 5 — Reporting + hardening ✅
+### Phase 5 — Reporting + hardening ⚠️
 
 - [x] Reports Overview page
 - [x] Delinquency Aging report (Overdue Analysis)
@@ -213,13 +213,13 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - [x] Audit Trail UI with filters
 - [x] Performance optimization (database indexes)
 - [x] Error tracking infrastructure (Error Boundary + logging utility)
-- [ ] Collection rate reports (planned for future)
-- [ ] Delinquency aging reports
-- [ ] Building-level rollups
+- [x] Collection rate reports
+- [x] Delinquency aging reports
+- [x] Building-level rollups
 - [ ] Performance optimization (query analysis, index tuning)
-- [ ] Audit log system for sensitive actions
+- [x] Audit log system for sensitive actions
 - [ ] Error tracking integration (e.g., Sentry)
-- [ ] Analytics dashboard for leadership
+- [x] Leadership reporting views
 
 ### UI/UX Improvements
 
@@ -231,66 +231,62 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 - [ ] Export functionality (CSV/PDF reports)
 - [ ] Advanced filtering and search
 
-## Phase 6 — Collection Rate Report
+## Phase 6 — Collection Rate Report ✅
 
 **Goal**: Provide leadership with collection rate metrics (collected vs due) over time.
 
 **Scope**:
 
-- Server action to calculate collection rate metrics
+- [x] Server action to calculate collection rate metrics
   - Date range filtering (start/end date)
   - Calculate: total due, total collected, collection rate percentage
   - Group by month/week (optional)
-- UI component for Collection Rate report
+- [x] UI component for Collection Rate report
   - Date range picker
   - Summary cards (total due, total collected, collection rate %)
   - Table/chart showing collection rate over time
   - Link from Reports dropdown
-- Route: `/app/org/[slug]/reports/collection-rate`
+- [x] Route: `/app/org/[slug]/reports/collection-rate`
 
 **Done when**:
 
-- Leadership can view collection rate metrics for any date range
-- Report shows clear collected vs due comparison
-- Report is accessible from Reports dropdown
+- [x] Leadership can view collection rate metrics for any date range
+- [x] Report shows clear collected vs due comparison
+- [x] Report is accessible from Reports navigation
 
 ---
 
-## Phase 7 — Reminder Sending System
+## Phase 7 — Email Reminder Sending System ⚠️
 
-**Goal**: Enable sending reminder messages (email/SMS) directly from the platform.
+**Goal**: Enable tracked reminder emails directly from the platform. SMS is deferred.
 
 **Scope**:
 
-- Email/SMS sending infrastructure
-  - Choose service: Resend (email) + Twilio (SMS) or similar
-  - Environment variables for API keys
-  - Server actions for sending emails/SMS
-- Database schema for reminder tracking
-  - `reminder_sends` table (organization_id, rent_period_id, tenant_id, channel, sent_at, status, etc.)
-  - Track reminder history per tenant/period
-- UI integration
-  - "Send Reminder" button in Follow-up Queue
-  - "Send Reminder" action in Rent Periods view
-  - Reminder history view (optional)
-  - Confirmation dialog before sending
-  - Success/error feedback via toasts
-- Integration with existing reminder draft generation
-  - Use `generateReminderDraft` / `generateBatchReminderDraft`
-  - Allow tone selection (friendly/formal/urgent) before sending
-  - Support single and batch sending
+- [x] Resend email infrastructure with server-only environment variables
+- [x] Org-scoped send actions with OWNER, MANAGER, and OPS role checks
+- [x] `reminder_sends` history table with RLS and cross-org validation
+- [x] Single reminder actions in Follow-up Queue and Rent Periods
+- [x] Selectable batch sending, capped at 25 independently tracked emails
+- [x] Friendly, formal, and urgent tone selection
+- [x] Confirmation dialogs and top-right toast feedback
+- [x] Reminder history route with status filtering
+- [x] Retry for failed and bounced attempts
+- [ ] Apply migration `018_reminder_sends_hardening.sql`
+- [ ] Verify the production Resend domain and a real end-to-end email
+- [ ] Add verified Resend webhooks before claiming delivered or bounced status
+- [ ] SMS delivery is deferred to a later product decision
 
 **Done when**:
 
-- Users can send email/SMS reminders directly from the app
-- Reminder sends are tracked in database
-- Users can see reminder history (optional)
-- Error handling for failed sends
+- [x] Users can send single and batch email reminders directly from the app
+- [x] Reminder attempts are tracked in the database
+- [x] Users can review history and retry failed attempts
+- [ ] Production-domain sending is verified
 
 **Dependencies**:
 
-- Email service API key (Resend recommended)
-- SMS service API key (Twilio recommended, or use email-only initially)
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL` on a verified sending domain
 
 ---
 
@@ -329,19 +325,17 @@ This document defines **development phases** for EstateIQ v1 so we can ship iter
 
 ---
 
-## MVP Completion Checklist
-
-After Phase 8, the MVP will be complete with:
+## Current MVP Readiness Checklist
 
 - ✅ Complete portfolio management (buildings, units, tenants, occupancies)
 - ✅ Rent configuration and period generation
 - ✅ Payment tracking and recording
 - ✅ Operational workflows (follow-ups, reminders)
 - ✅ Comprehensive reporting (delinquency, building rollups, collection rate)
-- ✅ Reminder sending (email/SMS)
-- ✅ AI-powered tone suggestions
-- ✅ Audit logging and error tracking
-- ✅ Performance optimization
+- ⚠️ Reminder sending (email implemented; migration and production delivery verification pending; SMS deferred)
+- ⏳ AI-powered tone suggestions (Phase 8 has not started)
+- ⚠️ Audit logging is implemented; external error monitoring is pending
+- ⚠️ Baseline indexes are implemented; production query profiling is pending
 
 ---
 

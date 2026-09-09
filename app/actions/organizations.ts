@@ -54,12 +54,17 @@ export async function getUserMemberships(): Promise<MembershipWithOrganization[]
   // Supabase nested selects can be typed as an array depending on relationship inference.
   // Normalize to OrganizationRef | null so the rest of the app has a stable shape.
   const normalized = (memberships ?? []).map((m) => {
-    const rawOrg = (m as any).organization
+    const membership = m as {
+      id: string
+      role: string
+      organization: OrganizationRef | OrganizationRef[] | null
+    }
+    const rawOrg = membership.organization
     const organization = Array.isArray(rawOrg) ? rawOrg[0] ?? null : rawOrg ?? null
     return {
-      id: (m as any).id as string,
-      role: (m as any).role as string,
-      organization: organization as OrganizationRef | null,
+      id: membership.id,
+      role: membership.role,
+      organization,
     }
   })
 
@@ -256,4 +261,3 @@ export async function updateOrganizationCurrency(
 
   return { error: null }
 }
-

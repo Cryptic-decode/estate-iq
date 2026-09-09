@@ -1,15 +1,18 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Building2, Download, MapPin, Pencil, Trash2, Upload } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Download, MapPin, Pencil, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { EntryModeSwitch } from '@/components/app/entry-mode-switch'
+import { PageHeader } from '@/components/app/page-header'
+import { downloadExcelTemplate } from '@/lib/utils/excel-template'
 import {
   createBuilding,
   deleteBuilding,
@@ -43,12 +46,6 @@ type BuildingImportPreview = {
   invalidCount: number
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
-
 export function BuildingsManager({
   orgSlug,
   orgName,
@@ -67,7 +64,6 @@ export function BuildingsManager({
 
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importValidation, setImportValidation] = useState<BuildingImportPreview | null>(null)
   const [isValidatingImport, setIsValidatingImport] = useState(false)
@@ -92,7 +88,6 @@ export function BuildingsManager({
     setEditingId(null)
     setName('')
     setAddress('')
-    setError(null)
   }
 
   const refresh = () => {
@@ -109,16 +104,15 @@ export function BuildingsManager({
   }
 
   const onSubmit = () => {
-    setError(null)
     const trimmedName = name.trim()
     const trimmedAddress = address.trim()
 
     if (!trimmedName) {
-      setError('Building name is required.')
+      toast.error('Building name is required.')
       return
     }
     if (!trimmedAddress) {
-      setError('Address is required.')
+      toast.error('Address is required.')
       return
     }
 
@@ -164,7 +158,6 @@ export function BuildingsManager({
     setEditingId(b.id)
     setName(b.name)
     setAddress(b.address ?? '')
-    setError(null)
   }
 
   const onDelete = (b: Building) => {
@@ -175,7 +168,6 @@ export function BuildingsManager({
     if (!deleteDialog.building) return
 
     const b = deleteDialog.building
-    setError(null)
     setDeleteDialog({ open: false, building: null })
     startTransition(async () => {
       const res = await deleteBuilding(orgSlug, b.id)
@@ -195,15 +187,17 @@ export function BuildingsManager({
   }
 
   const onDownloadTemplate = () => {
-    const workbook = XLSX.utils.book_new()
-    const templateRows = [
-      ['name', 'address'],
-      ['Oceanview Apartments', '12 Palm Street, Victoria Island, Lagos'],
-      ['Maple Heights', '45 Adeola Odeku, Lagos'],
-    ]
-    const worksheet = XLSX.utils.aoa_to_sheet(templateRows)
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Buildings')
-    XLSX.writeFile(workbook, 'buildings-import-template.xlsx')
+    downloadExcelTemplate({
+      filename: 'estateiq-buildings-sample.xlsx',
+      sheetName: 'Buildings',
+      headers: ['name', 'address'],
+      examples: [
+        ['Oceanview Apartments', '12 Palm Street, Victoria Island, Lagos'],
+        ['Maple Heights', '45 Adeola Odeku, Lagos'],
+      ],
+      requiredHeaders: ['name', 'address'],
+      notes: ['Building names must be unique within the organization.'],
+    })
   }
 
   const onValidateImport = () => {
@@ -265,18 +259,11 @@ export function BuildingsManager({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Buildings
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                Manage buildings for <span className="font-medium">{orgName}</span>
-              </p>
-        </div>
+        <PageHeader eyebrow="Portfolio" title="Buildings" description={`Manage the properties in ${orgName}.`} meta={`${buildings.length} ${buildings.length === 1 ? 'building' : 'buildings'}`} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -298,19 +285,6 @@ export function BuildingsManager({
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
@@ -330,18 +304,11 @@ export function BuildingsManager({
                   ))}
                 </div>
               ) : buildings.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Building2 className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    No buildings yet
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    Create your first building to start adding units.
-                  </p>
-                  <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                    Use the form on the right to get started.
-                  </p>
-                </div>
+                <EmptyState
+                  title="No buildings yet"
+                  description="Create your first building to start adding units."
+                  guidance="Use the form on this page to get started."
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {buildings.map((b) => (
@@ -403,33 +370,18 @@ export function BuildingsManager({
               <CardTitle>{mode === 'create' ? 'Add buildings' : 'Edit building'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Switch between individual entry and bulk upload.'
+                  ? 'Add one building or upload a completed sample spreadsheet.'
                   : 'Update the building details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {mode === 'create' ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-1 dark:border-zinc-800">
-                    <Button
-                      variant={entryMode === 'individual' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('individual')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Individual
-                    </Button>
-                    <Button
-                      variant={entryMode === 'bulk' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('bulk')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Bulk upload
-                    </Button>
-                  </div>
+                  <EntryModeSwitch
+                    value={entryMode}
+                    onChange={setEntryMode}
+                    disabled={isPending || isValidatingImport || isImporting}
+                  />
 
                   {entryMode === 'individual' ? (
                     <div className="space-y-4">
@@ -614,5 +566,3 @@ export function BuildingsManager({
     </div>
   )
 }
-
-

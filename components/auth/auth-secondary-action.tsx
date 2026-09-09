@@ -33,11 +33,11 @@ export function AuthSecondaryAction({
 
   return (
     <div className="text-center text-sm">
-      <span className="text-zinc-600 dark:text-zinc-400">{action.text} </span>
+      <span className="text-muted-foreground">{action.text} </span>
       <motion.span {...hoverScaleVariants}>
         <Link
           href={href}
-          className="font-medium text-zinc-900 transition-colors hover:text-zinc-700 hover:underline dark:text-zinc-50 dark:hover:text-zinc-200"
+          className="font-medium text-foreground transition-colors hover:text-brand-brass hover:underline"
         >
           {action.linkText}
         </Link>
@@ -45,4 +45,3 @@ export function AuthSecondaryAction({
     </div>
   )
 }
-

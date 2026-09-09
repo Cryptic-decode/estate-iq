@@ -1,7 +1,11 @@
 'use client'
 
 import { useId, useMemo } from 'react'
-import ReactSelect, { type Props as ReactSelectProps, type GroupBase } from 'react-select'
+import ReactSelect, {
+  type ClassNamesConfig,
+  type Props as ReactSelectProps,
+  type GroupBase,
+} from 'react-select'
 import { useTheme } from 'next-themes'
 
 export type SelectOption = { value: string; label: string }
@@ -26,17 +30,17 @@ export function Select({ label, error, helperText, options, value, onChange, id,
 
   const isDark = resolvedTheme === 'dark'
 
-  const classNames = useMemo(() => {
+  const classNames = useMemo<ClassNamesConfig<SelectOption, false, GroupBase<SelectOption>>>(() => {
     const controlBase =
       'min-h-[40px] rounded-md border shadow-sm transition-all focus-within:outline-none'
     const controlBorder = error
       ? 'border-red-300 dark:border-red-700'
-      : 'border-zinc-300 dark:border-zinc-700'
-    const controlBg = 'bg-white dark:bg-zinc-900/50'
-    const controlText = 'text-zinc-900 dark:text-zinc-50'
+      : 'border-input'
+    const controlBg = 'bg-card'
+    const controlText = 'text-foreground'
     const controlFocus = error
       ? 'ring-1 ring-red-500'
-      : 'ring-1 ring-zinc-500'
+      : 'ring-1 ring-ring'
 
     return {
       container: () => 'mt-1',
@@ -50,33 +54,33 @@ export function Select({ label, error, helperText, options, value, onChange, id,
           state.isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
         ].join(' '),
       valueContainer: () => 'px-3 py-1',
-      placeholder: () => 'text-zinc-500 dark:text-zinc-400',
-      singleValue: () => 'text-zinc-900 dark:text-zinc-50',
-      input: () => 'text-zinc-900 dark:text-zinc-50',
+      placeholder: () => 'text-muted-foreground',
+      singleValue: () => 'text-foreground',
+      input: () => 'text-foreground',
       indicatorsContainer: () => 'pr-2',
-      indicatorSeparator: () => 'bg-zinc-200 dark:bg-zinc-700',
-      dropdownIndicator: () => 'text-zinc-500 dark:text-zinc-400',
-      clearIndicator: () => 'text-zinc-500 dark:text-zinc-400',
+      indicatorSeparator: () => 'bg-border',
+      dropdownIndicator: () => 'text-muted-foreground',
+      clearIndicator: () => 'text-muted-foreground',
       menu: () =>
-        'mt-1 rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900',
+        'mt-1 rounded-md border border-border bg-popover shadow-lg',
       menuList: () => 'p-1',
       option: (state: { isFocused: boolean; isSelected: boolean }) =>
         [
           'rounded-md px-3 py-2 text-sm',
           state.isSelected
-            ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+            ? 'bg-accent text-accent-foreground'
             : state.isFocused
-              ? 'bg-zinc-50 text-zinc-900 dark:bg-zinc-800/60 dark:text-zinc-50'
-              : 'text-zinc-700 dark:text-zinc-200',
+              ? 'bg-accent/60 text-accent-foreground'
+              : 'text-popover-foreground',
         ].join(' '),
-      noOptionsMessage: () => 'px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400',
+      noOptionsMessage: () => 'px-3 py-2 text-sm text-muted-foreground',
     }
   }, [error])
 
   return (
     <div className="w-full">
       {label && (
-        <label htmlFor={inputId} className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor={inputId} className="mb-2 block text-sm font-medium text-foreground">
           {label}
         </label>
       )}
@@ -87,7 +91,7 @@ export function Select({ label, error, helperText, options, value, onChange, id,
         value={value}
         onChange={(v) => onChange((v as SelectOption) ?? null)}
         isSearchable
-        classNames={classNames as any}
+        classNames={classNames}
         styles={{
           // Prevent react-select inline defaults from adding transparency
           control: (base) => ({ ...base, backgroundColor: 'transparent' }),
@@ -96,21 +100,21 @@ export function Select({ label, error, helperText, options, value, onChange, id,
           ...theme,
           colors: {
             ...theme.colors,
-            neutral0: isDark ? '#18181b' : '#ffffff',
-            neutral5: isDark ? '#27272a' : '#f4f4f5',
-            neutral10: isDark ? '#27272a' : '#f4f4f5',
-            neutral20: isDark ? '#3f3f46' : '#d4d4d8',
-            neutral30: isDark ? '#52525b' : '#a1a1aa',
-            neutral40: isDark ? '#a1a1aa' : '#71717a',
-            neutral50: isDark ? '#a1a1aa' : '#71717a',
-            neutral60: isDark ? '#d4d4d8' : '#52525b',
-            neutral70: isDark ? '#e4e4e7' : '#3f3f46',
-            neutral80: isDark ? '#f4f4f5' : '#27272a',
-            neutral90: isDark ? '#fafafa' : '#18181b',
-            primary: isDark ? '#e4e4e7' : '#27272a',
-            primary25: isDark ? '#27272a' : '#fafafa',
-            primary50: isDark ? '#3f3f46' : '#f4f4f5',
-            primary75: isDark ? '#52525b' : '#e4e4e7',
+            neutral0: isDark ? '#10231e' : '#fffdf8',
+            neutral5: isDark ? '#173029' : '#f7f5ef',
+            neutral10: isDark ? '#18352e' : '#eeeae0',
+            neutral20: isDark ? '#39534b' : '#d4cdbd',
+            neutral30: isDark ? '#526b63' : '#aca493',
+            neutral40: isDark ? '#8b9c95' : '#718078',
+            neutral50: isDark ? '#aeb9b3' : '#5b6962',
+            neutral60: isDark ? '#c8d0cc' : '#425149',
+            neutral70: isDark ? '#dce1de' : '#2c3b34',
+            neutral80: isDark ? '#f4f1e8' : '#14201b',
+            neutral90: isDark ? '#fffdf8' : '#0c1613',
+            primary: '#b48a4a',
+            primary25: isDark ? '#18352e' : '#eee9dd',
+            primary50: isDark ? '#22483e' : '#e8e2d6',
+            primary75: isDark ? '#2d5a4e' : '#d9d3c5',
           },
         })}
         {...props}
@@ -121,12 +125,10 @@ export function Select({ label, error, helperText, options, value, onChange, id,
         </p>
       )}
       {helperText && !error && (
-        <p id={`${inputId}-helper`} className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <p id={`${inputId}-helper`} className="mt-1 text-xs text-muted-foreground">
           {helperText}
         </p>
       )}
     </div>
   )
 }
-
-

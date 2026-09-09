@@ -6,8 +6,8 @@ EstateIQ v1 is an internal **multi-company SaaS** for real estate companies to t
 
 ## Scope (v1)
 
-- **In scope**: orgs + roles, buildings, units, tenants, occupancy/lease assignment, rent config, rent periods + status, manual payment confirmation.
-- **Out of scope**: payment processing, tenant portal, WhatsApp automation, accounting, maintenance, mobile apps.
+- **In scope**: orgs + roles, portfolio records, rent schedules and periods, manual payment confirmation, operational follow-ups, reporting, and tracked email reminders.
+- **Out of scope**: payment processing, tenant portal, SMS/WhatsApp automation, accounting, and mobile apps. Maintenance remains outside the agreed v1 scope until its workflows are defined.
 
 ## Multi-tenancy (non-negotiable)
 
@@ -40,6 +40,8 @@ Create `.env.local` with your Supabase project values (see Supabase dashboard):
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+- `RESEND_API_KEY` (server-only)
+- `RESEND_FROM_EMAIL` (verified sender address)
 
 ## Database migrations (Supabase)
 
@@ -47,17 +49,7 @@ Migrations live in `supabase/migrations/`.
 
 ### Apply via Supabase Dashboard (recommended for development)
 
-Supabase → **SQL Editor** → run files in order:
-
-1. `001_initial_schema.sql`
-2. `002_enable_rls.sql`
-3. `003_buildings.sql`
-4. `004_units.sql`
-5. `005_tenants.sql`
-6. `006_occupancies.sql`
-7. `007_rent_configs.sql`
-8. `008_rent_periods.sql`
-9. `009_payments.sql`
+Supabase → **SQL Editor** → run the numbered migration files in ascending order.
 
 Notes:
 
@@ -70,6 +62,7 @@ Notes:
 - **App entry**: `/app` (redirects to onboarding or the first org)
 - **Onboarding**: `/app/onboarding`
 - **Org dashboard**: `/app/org/[slug]`
+- **Reminder history**: `/app/org/[slug]/reminders`
 
 ## Docs
 

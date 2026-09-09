@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { FormEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from './password-input'
 import { AuthButton } from './auth-button'
-import { AuthErrorPanel } from './auth-error-panel'
 import { AuthSecondaryAction } from './auth-secondary-action'
 
 interface AnimatedAuthFormProps {
@@ -19,7 +18,6 @@ interface AnimatedAuthFormProps {
   setCompanyName?: (name: string) => void
   onSubmit: (e: FormEvent<HTMLFormElement>) => void
   loading: boolean
-  error?: string | null
 }
 
 export function AnimatedAuthForm({
@@ -34,7 +32,6 @@ export function AnimatedAuthForm({
   setCompanyName,
   onSubmit,
   loading,
-  error,
 }: AnimatedAuthFormProps) {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -43,9 +40,6 @@ export function AnimatedAuthForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Error Panel */}
-      {error && <AuthErrorPanel error={error} />}
-
       {/* Signup-only: Full Name and Company Name (2-column grid) */}
       {type === 'signup' && setFullName && setCompanyName && (
         <div className="grid grid-cols-2 gap-4">
@@ -112,4 +106,3 @@ export function AnimatedAuthForm({
     </form>
   )
 }
-

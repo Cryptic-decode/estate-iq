@@ -482,8 +482,10 @@ export async function importTenantsFromXlsx(
     return { data: null, error: 'Insufficient permissions' }
   }
 
+  const organizationId = orgRes.data.organizationId
+
   const payload = validation.data.validRows.map((row) => ({
-    organization_id: orgRes.data.organizationId,
+    organization_id: organizationId,
     full_name: row.full_name,
     email: row.email || null,
     phone: row.phone || null,
@@ -507,4 +509,3 @@ export async function importTenantsFromXlsx(
     error: null,
   }
 }
-

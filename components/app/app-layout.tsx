@@ -1,32 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { ReactNode, useState, useTransition, useEffect } from 'react'
-import { useTheme } from 'next-themes'
-import { motion } from 'framer-motion'
+import { ReactNode, useEffect, useRef, useState, useTransition } from 'react'
 import { signOut } from '@/app/actions/auth'
 import {
-  Building2,
-  Home,
-  Users,
-  FileText,
-  Wallet,
-  Calendar,
-  Settings,
-  LogOut,
+  Menu,
   Moon,
   Sun,
-  Receipt,
-  LayoutGrid,
-  AlertCircle,
-  BarChart3,
-  Shield,
-  PieChart,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { NavDropdown } from '@/components/app/nav-dropdown'
-import { hoverScaleVariants } from '@/components/auth/motion-variants'
+import { EstateIQLogo } from '@/components/brand/estate-iq-logo'
+import { useThemeControl } from '@/components/ui/use-theme-control'
 
 interface AppLayoutProps {
   orgSlug: string
@@ -36,51 +22,182 @@ interface AppLayoutProps {
   children: ReactNode
 }
 
-// Grouped navigation items
-const navGroups = [
+type NavItem = {
+  href: string
+  label: string
+}
+
+type NavGroup = {
+  label: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: 'Workspace',
+    items: [{ href: '', label: 'Dashboard' }],
+  },
   {
     label: 'Portfolio',
-    icon: LayoutGrid,
     items: [
-      { href: 'buildings', label: 'Buildings', icon: Building2 },
-      { href: 'units', label: 'Units', icon: Home },
-      { href: 'tenants', label: 'Tenants', icon: Users },
-      { href: 'occupancies', label: 'Occupancies', icon: FileText },
+      { href: 'buildings', label: 'Buildings' },
+      { href: 'units', label: 'Units' },
+      { href: 'tenants', label: 'Tenants' },
+      { href: 'occupancies', label: 'Occupancies' },
     ],
   },
   {
-    label: 'Rent & Payments',
-    icon: Wallet,
+    label: 'Service',
+    items: [{ href: 'maintenance', label: 'Maintenance' }],
+  },
+  {
+    label: 'Rent operations',
     items: [
-      { href: 'rent-configs', label: 'Rent Schedules', icon: Wallet },
-      { href: 'rent-periods', label: 'Rent Periods', icon: Calendar },
-      { href: 'payments', label: 'Payments', icon: Receipt },
-      { href: 'follow-ups', label: 'Follow-up Queue', icon: AlertCircle },
-      { href: 'buildings-unpaid', label: 'Unpaid by Building', icon: Building2 },
+      { href: 'rent-configs', label: 'Rent schedules' },
+      { href: 'rent-periods', label: 'Rent periods' },
+      { href: 'payments', label: 'Payments' },
+      { href: 'follow-ups', label: 'Follow-up queue' },
+      { href: 'reminders', label: 'Reminder history' },
+      { href: 'buildings-unpaid', label: 'Unpaid by building' },
     ],
   },
   {
-    label: 'Reports',
-    icon: BarChart3,
+    label: 'Insights',
     items: [
-      { href: 'reports', label: 'Overview', icon: BarChart3 },
-      { href: 'reports/delinquency-aging', label: 'Overdue Analysis', icon: BarChart3 },
-      { href: 'reports/collection-rate', label: 'Collection Rate', icon: BarChart3 },
-      { href: 'reports/building-rollups', label: 'Building Rollups', icon: PieChart },
-      { href: 'reports/audit-trail', label: 'Audit Trail', icon: Shield },
+      { href: 'reports', label: 'Reports overview' },
+      { href: 'reports/delinquency-aging', label: 'Overdue analysis' },
+      { href: 'reports/collection-rate', label: 'Collection rate' },
+      { href: 'reports/building-rollups', label: 'Building rollups' },
+      { href: 'reports/audit-trail', label: 'Audit trail' },
     ],
   },
 ]
 
+function Navigation({
+  orgSlug,
+  currentPath,
+  userRole,
+  onNavigate,
+}: {
+  orgSlug: string
+  currentPath?: string
+  userRole?: string
+  onNavigate?: () => void
+}) {
+  const isActive = (href: string) => {
+    if (href === '') return !currentPath
+    if (href === 'reports') return currentPath === href
+    return currentPath === href || Boolean(currentPath?.startsWith(`${href}/`))
+  }
+
+  return (
+    <nav aria-label="Primary navigation" className="space-y-6">
+      {navGroups.map((group) => (
+        <div key={group.label}>
+          <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {group.label}
+          </p>
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const active = isActive(item.href)
+              const href = item.href
+                ? `/app/org/${orgSlug}/${item.href}`
+                : `/app/org/${orgSlug}`
+
+              return (
+                <Link
+                  key={item.href}
+                  href={href}
+                  onClick={onNavigate}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex min-h-10 items-center border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
+                    active
+                      ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'border-transparent text-muted-foreground hover:border-sidebar-border hover:text-sidebar-accent-foreground'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {userRole === 'OWNER' && (
+        <div>
+          <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Organization
+          </p>
+          <Link
+            href={`/app/org/${orgSlug}/settings`}
+            onClick={onNavigate}
+            aria-current={currentPath === 'settings' ? 'page' : undefined}
+            className={`flex min-h-10 items-center border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
+              currentPath === 'settings'
+                ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'border-transparent text-muted-foreground hover:border-sidebar-border hover:text-sidebar-accent-foreground'
+            }`}
+          >
+            <span>Settings</span>
+          </Link>
+        </div>
+      )}
+    </nav>
+  )
+}
+
 export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }: AppLayoutProps) {
-  const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  const { themeLabel, themePressed, toggleTheme } = useThemeControl()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [showSignOutDialog, setShowSignOutDialog] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const mobileNavRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    if (!mobileNavOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    const menuButton = menuButtonRef.current
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavOpen(false)
+    }
+
+    const handleTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !mobileNavRef.current) return
+
+      const focusable = Array.from(
+        mobileNavRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      )
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!first || !last) return
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleTab)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleTab)
+      menuButton?.focus()
+    }
+  }, [mobileNavOpen])
 
   const handleSignOut = () => {
     startTransition(async () => {
@@ -90,79 +207,141 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
 
   return (
     <>
-      <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-        <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-            <div className="flex items-center gap-4">
-              <Link
-                href={`/app/org/${orgSlug}`}
-                className="text-lg font-semibold text-zinc-900 transition-colors hover:text-zinc-700 dark:text-zinc-50 dark:hover:text-zinc-200 cursor-pointer"
-              >
-                EstateIQ
-              </Link>
-              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800" />
-              <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                <span className="font-medium text-zinc-900 dark:text-zinc-50">{orgName}</span>
+      <div className="min-h-screen bg-background text-foreground">
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
+          <div className="border-b border-sidebar-border px-5 py-5">
+            <Link
+              href={`/app/org/${orgSlug}`}
+              className="inline-flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <EstateIQLogo compact />
+            </Link>
+            <p className="mt-3 truncate text-xs text-muted-foreground">{orgName}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-3 py-5">
+            <Navigation orgSlug={orgSlug} currentPath={currentPath} userRole={userRole} />
+          </div>
+          <div className="border-t border-sidebar-border p-3">
+            <div className="mb-2 flex items-center justify-between rounded-lg px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{orgName}</p>
+                <p className="text-xs capitalize text-muted-foreground">{userRole?.toLowerCase()}</p>
               </div>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                aria-label={themeLabel}
+                aria-pressed={themePressed}
+              >
+                <Sun className="absolute h-4 w-4 scale-100 dark:scale-0" />
+                <Moon className="absolute h-4 w-4 scale-0 dark:scale-100" />
+              </button>
             </div>
+            <Button
+              type="button"
+              variant="tertiary"
+              size="sm"
+              onClick={() => setShowSignOutDialog(true)}
+              className="w-full justify-start no-underline hover:no-underline"
+            >
+              Sign out
+            </Button>
+          </div>
+        </aside>
 
-            <nav className="hidden items-center gap-1 md:flex">
-              {navGroups.map((group) => (
-                <NavDropdown
-                  key={group.label}
-                  group={group}
-                  orgSlug={orgSlug}
-                  currentPath={currentPath}
-                />
-              ))}
-            </nav>
-
-            <div className="flex items-center gap-2">
-              {userRole === 'OWNER' && (
-                <Link
-                  href={`/app/org/${orgSlug}/settings`}
-                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${
-                    currentPath === 'settings'
-                      ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
-                      : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50'
-                  }`}
-                >
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden sm:inline">Settings</span>
-                </Link>
-              )}
-              {/* Theme Toggle */}
-              {mounted && (
-                <motion.button
-                  {...hoverScaleVariants}
+        <div className="lg:pl-64">
+          <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-md lg:hidden">
+            <div className="flex h-16 items-center justify-between px-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  ref={menuButtonRef}
                   type="button"
-                  onClick={() => {
-                    const current = resolvedTheme || 'light'
-                    setTheme(current === 'dark' ? 'light' : 'dark')
-                  }}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
-                  aria-label="Toggle theme"
+                  onClick={() => setMobileNavOpen(true)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Open navigation"
+                  aria-expanded={mobileNavOpen}
+                  aria-controls="mobile-navigation"
                 >
-                  <Sun className="pointer-events-none absolute h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                  <Moon className="pointer-events-none absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                </motion.button>
-              )}
+                  <Menu className="h-5 w-5" />
+                </button>
+                <div className="min-w-0">
+                  <EstateIQLogo compact />
+                  <p className="truncate text-xs text-muted-foreground">{orgName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="relative flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={themeLabel}
+                aria-pressed={themePressed}
+              >
+                <Sun className="absolute h-5 w-5 scale-100 dark:scale-0" />
+                <Moon className="absolute h-5 w-5 scale-0 dark:scale-100" />
+              </button>
+            </div>
+          </header>
+          <main id="main-content" tabIndex={-1} className="min-w-0 outline-none">{children}</main>
+        </div>
+      </div>
+
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-[#07100d]/60 backdrop-blur-sm"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close navigation"
+          />
+          <aside
+            ref={mobileNavRef}
+            id="mobile-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            className="relative flex h-full w-[min(20rem,88vw)] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl motion-safe:animate-in motion-safe:slide-in-from-left"
+          >
+            <div className="flex items-center justify-between border-b border-sidebar-border px-5 py-4">
+              <div>
+                <EstateIQLogo compact />
+                <p className="mt-0.5 max-w-56 truncate text-xs text-muted-foreground">{orgName}</p>
+              </div>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                aria-label="Close navigation"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-5">
+              <Navigation
+                orgSlug={orgSlug}
+                currentPath={currentPath}
+                userRole={userRole}
+                onNavigate={() => setMobileNavOpen(false)}
+              />
+            </div>
+            <div className="border-t border-sidebar-border p-4">
               <Button
                 type="button"
-                variant="tertiary"
-                size="sm"
-                onClick={() => setShowSignOutDialog(true)}
-                className="flex items-center gap-2"
+                variant="secondary"
+                size="md"
+                fullWidth
+                onClick={() => {
+                  setMobileNavOpen(false)
+                  setShowSignOutDialog(true)
+                }}
               >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Sign out</span>
+                Sign out
               </Button>
             </div>
-          </div>
-        </header>
-
-        <main className="flex-1">{children}</main>
-      </div>
+          </aside>
+        </div>
+      )}
 
       <ConfirmDialog
         open={showSignOutDialog}
@@ -178,4 +357,3 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
     </>
   )
 }
-

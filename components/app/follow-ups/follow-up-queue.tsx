@@ -1,18 +1,20 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Link from 'next/link'
 import { AlertCircle, Clock, Receipt, Building2, Home, User, Calendar, Wallet, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonLink } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Select, type SelectOption } from '@/components/ui/select'
+import { PageHeader } from '@/components/app/page-header'
 import {
   getOverdueRentPeriods,
   getDueTodayRentPeriods,
+  sendBatchReminderEmail,
   sendReminderEmail,
   type OverdueRentPeriod,
   type DueTodayRentPeriod,
@@ -36,18 +38,26 @@ export function FollowUpQueue({
   orgSlug,
   orgName,
   currency,
+  initialOverduePeriods,
+  initialDueTodayPeriods,
+  initialError,
 }: {
   orgSlug: string
   orgName: string
   currency: string
+  initialOverduePeriods: OverdueRentPeriod[]
+  initialDueTodayPeriods: DueTodayRentPeriod[]
+  initialError: string | null
 }) {
   const [isPending, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(true)
-  const [overduePeriods, setOverduePeriods] = useState<OverdueRentPeriod[]>([])
-  const [dueTodayPeriods, setDueTodayPeriods] = useState<DueTodayRentPeriod[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [overduePeriods, setOverduePeriods] = useState<OverdueRentPeriod[]>(initialOverduePeriods)
+  const [dueTodayPeriods, setDueTodayPeriods] = useState<DueTodayRentPeriod[]>(initialDueTodayPeriods)
   const [activeTab, setActiveTab] = useState<'overdue' | 'due-today'>('overdue')
   const [reminderTone, setReminderTone] = useState<ReminderTone>('friendly')
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false)
+  const [selectedPeriodIds, setSelectedPeriodIds] = useState<Set<string>>(new Set())
   const [sendTarget, setSendTarget] = useState<{
     rentPeriodId: string
     tenantName: string
@@ -83,65 +93,84 @@ export function FollowUpQueue({
       }
 
       setIsLoading(false)
+      setSelectedPeriodIds(new Set())
     })
   }
-
-  useEffect(() => {
-    refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgSlug])
 
   const displayPeriods = activeTab === 'overdue' ? overduePeriods : dueTodayPeriods
   const hasOverdue = overduePeriods.length > 0
   const hasDueToday = dueTodayPeriods.length > 0
+  const eligiblePeriodIds = displayPeriods
+    .filter((period) => Boolean(period.rent_config.occupancy.tenant.email))
+    .map((period) => period.id)
+  const allEligibleSelected =
+    eligiblePeriodIds.length > 0 &&
+    eligiblePeriodIds.slice(0, 25).every((id) => selectedPeriodIds.has(id))
   const toneLabel = toneOptions.find((o) => o.value === reminderTone)?.label || 'Friendly'
+  const overdueAmount = useMemo(
+    () => overduePeriods.reduce((total, period) => total + period.rent_config.amount, 0),
+    [overduePeriods]
+  )
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Follow-up Queue</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Track and manage overdue and due today rent periods for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="Rent operations"
+          title="Follow-up queue"
+          description={`Prioritize overdue rent, record payments, and contact tenants for ${orgName}.`}
+          meta={`${overduePeriods.length} overdue · ${dueTodayPeriods.length} due today · ${formatCurrency(overdueAmount, currency)} overdue`}
+          actions={
+            <>
+              <ButtonLink href={`/app/org/${orgSlug}/reminders`} variant="secondary">
+                Reminder history
+              </ButtonLink>
+              <Button variant="secondary" onClick={refresh} disabled={isPending || isLoading} loading={isLoading}>
+                Refresh
+              </Button>
+            </>
+          }
+        />
 
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
+        {initialError && (
+          <div
+            role="alert"
+            className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+          >
+            {initialError}. Refresh to try again.
+          </div>
+        )}
+
+        <Card className="mt-8">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <CardTitle>Rent periods requiring attention</CardTitle>
               <CardDescription className="mt-1">
                 Review overdue and due today periods. Record payments or take follow-up actions.
               </CardDescription>
             </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
-              <div className="w-full sm:w-44">
+            <div className="w-full sm:w-48">
                 <Select
-                  label="Tone"
+                  label="Reminder tone"
                   options={toneOptions}
                   value={toneOptions.find((o) => o.value === reminderTone) ?? toneOptions[0]}
                   onChange={(opt) => setReminderTone(((opt?.value || 'friendly') as ReminderTone) ?? 'friendly')}
                   isDisabled={isPending || isLoading}
                   isSearchable={false}
                 />
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={refresh}
-                disabled={isPending || isLoading}
-                loading={isLoading}
-                className="shrink-0"
-              >
-                Refresh
-              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Tabs */}
-            <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+            <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800" role="tablist" aria-label="Follow-up status">
               <button
-                onClick={() => setActiveTab('overdue')}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'overdue'}
+                onClick={() => {
+                  setActiveTab('overdue')
+                  setSelectedPeriodIds(new Set())
+                }}
                 className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'overdue'
                     ? 'border-red-600 text-red-600 dark:border-red-400 dark:text-red-400'
@@ -157,7 +186,13 @@ export function FollowUpQueue({
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('due-today')}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'due-today'}
+                onClick={() => {
+                  setActiveTab('due-today')
+                  setSelectedPeriodIds(new Set())
+                }}
                 className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'due-today'
                     ? 'border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400'
@@ -173,6 +208,47 @@ export function FollowUpQueue({
                 )}
               </button>
             </div>
+
+            {eligiblePeriodIds.length > 0 ? (
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex min-h-10 cursor-pointer items-center gap-3 text-sm font-medium text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={allEligibleSelected}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        setSelectedPeriodIds(new Set(eligiblePeriodIds.slice(0, 25)))
+                        if (eligiblePeriodIds.length > 25) {
+                          toast.warning('The first 25 eligible reminders were selected.')
+                        }
+                      } else {
+                        setSelectedPeriodIds(new Set())
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  Select eligible reminders
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{selectedPeriodIds.size} selected</span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSelectedPeriodIds(new Set())}
+                    disabled={selectedPeriodIds.size === 0 || isPending}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setBatchConfirmOpen(true)}
+                    disabled={selectedPeriodIds.size === 0 || isPending}
+                  >
+                    Send selected
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             {/* Content */}
             {isLoading ? (
@@ -195,34 +271,21 @@ export function FollowUpQueue({
                 ))}
               </div>
             ) : displayPeriods.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                {activeTab === 'overdue' ? (
-                  <>
-                    <AlertCircle className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                    <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">No overdue periods</p>
-                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                      Great! All rent periods are up to date.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Clock className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                    <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">No periods due today</p>
-                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                      No rent periods are due today. Check back tomorrow or view all periods.
-                    </p>
-                  </>
-                )}
-                <div className="mt-4">
-                  <Link href={`/app/org/${orgSlug}/rent-periods`}>
-                    <Button variant="secondary" size="sm">
-                      View all periods
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+              <EmptyState
+                title={activeTab === 'overdue' ? 'No overdue periods' : 'No periods due today'}
+                description={
+                  activeTab === 'overdue'
+                    ? 'All current rent periods are up to date.'
+                    : 'No rent periods are due today. Check back tomorrow or review all periods.'
+                }
+                action={
+                  <ButtonLink href={`/app/org/${orgSlug}/rent-periods`} variant="secondary" size="sm">
+                    View all periods
+                  </ButtonLink>
+                }
+              />
             ) : (
-              <div className="space-y-3 pt-4">
+              <div role="tabpanel" className="space-y-3 pt-4">
                 <AnimatePresence mode="wait">
                   {displayPeriods.map((period) => {
                     const isOverdue = period.status === 'OVERDUE'
@@ -250,17 +313,41 @@ export function FollowUpQueue({
                             : 'border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="flex-1 space-y-3">
                             {/* Header */}
                             <div className="flex items-start gap-3">
+                              <label className="flex h-6 w-6 shrink-0 items-center justify-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPeriodIds.has(period.id)}
+                                  disabled={!tenant.email || isPending}
+                                  onChange={(event) => {
+                                    setSelectedPeriodIds((current) => {
+                                      const next = new Set(current)
+                                      if (event.target.checked) {
+                                        if (next.size >= 25) {
+                                          toast.warning('You can send up to 25 reminders at a time.')
+                                          return current
+                                        }
+                                        next.add(period.id)
+                                      } else {
+                                        next.delete(period.id)
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  aria-label={`Select reminder for ${tenant.full_name}`}
+                                  className="h-4 w-4 rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                              </label>
                               {isOverdue ? (
                                 <AlertCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
                               ) : (
                                 <Clock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
                               )}
                               <div className="flex-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <h3
                                     className={`text-sm font-semibold ${
                                       isOverdue
@@ -322,7 +409,7 @@ export function FollowUpQueue({
                               {tenant.email && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-zinc-400">Email:</span>
-                                  <span className="text-zinc-600 dark:text-zinc-400">{tenant.email}</span>
+                                  <span className="break-all text-zinc-600 dark:text-zinc-400">{tenant.email}</span>
                                 </div>
                               )}
                               {tenant.phone && (
@@ -335,18 +422,11 @@ export function FollowUpQueue({
                           </div>
 
                           {/* Actions */}
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <Link href={`/app/org/${orgSlug}/payments?rentPeriodId=${period.id}`}>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                disabled={isPending}
-                              >
-                                <Receipt className="mr-1.5 h-4 w-4" />
-                                Record payment
-                              </Button>
-                            </Link>
+                          <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-auto lg:grid-cols-1 xl:grid-cols-3">
+                            <ButtonLink href={`/app/org/${orgSlug}/payments?rentPeriodId=${period.id}`} size="sm" fullWidth>
+                              <Receipt className="h-4 w-4" />
+                              Record payment
+                            </ButtonLink>
                             <Button
                               variant="secondary"
                               size="sm"
@@ -365,12 +445,10 @@ export function FollowUpQueue({
                               <Mail className="mr-1.5 h-4 w-4" />
                               Send reminder
                             </Button>
-                            <Link href={`/app/org/${orgSlug}/rent-periods`}>
-                              <Button variant="secondary" size="sm" className="w-full sm:w-auto" disabled={isPending}>
-                                <Wallet className="mr-1.5 h-4 w-4" />
-                                View details
-                              </Button>
-                            </Link>
+                            <ButtonLink href={`/app/org/${orgSlug}/rent-periods`} variant="secondary" size="sm" fullWidth>
+                              <Wallet className="h-4 w-4" />
+                              View details
+                            </ButtonLink>
                           </div>
                         </div>
                       </motion.div>
@@ -413,7 +491,35 @@ export function FollowUpQueue({
         cancelText="Cancel"
         loading={isPending}
       />
+
+      <ConfirmDialog
+        open={batchConfirmOpen}
+        onClose={() => {
+          if (!isPending) setBatchConfirmOpen(false)
+        }}
+        onConfirm={() => {
+          const selectedIds = Array.from(selectedPeriodIds)
+          if (selectedIds.length === 0) return
+
+          startTransition(async () => {
+            const result = await sendBatchReminderEmail(orgSlug, selectedIds, reminderTone)
+            if (result.sentCount > 0 && result.failedCount === 0) {
+              toast.success(`${result.sentCount} reminder email${result.sentCount === 1 ? '' : 's'} accepted.`)
+            } else if (result.sentCount > 0) {
+              toast.warning(`${result.sentCount} accepted, ${result.failedCount} failed.`)
+            } else {
+              toast.error(result.error || 'No reminder emails were sent.')
+            }
+            setSelectedPeriodIds(new Set())
+            setBatchConfirmOpen(false)
+          })
+        }}
+        title="Send selected reminder emails?"
+        description={`This will send one ${toneLabel.toLowerCase()} email for each of the ${selectedPeriodIds.size} selected rent periods. Continue?`}
+        confirmText="Send emails"
+        cancelText="Cancel"
+        loading={isPending}
+      />
     </div>
   )
 }
-

@@ -1,20 +1,16 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { motion } from 'framer-motion'
 import { Settings as SettingsIcon, Wallet, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, type SelectOption } from '@/components/ui/select'
-import { updateOrganizationCurrency, getOrganizationBySlug } from '@/app/actions/organizations'
+import { updateOrganizationCurrency } from '@/app/actions/organizations'
 import { CURRENCY_OPTIONS } from '@/lib/utils/currency'
-
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
+import { PageHeader } from '@/components/app/page-header'
 
 export function SettingsManager({
   orgSlug,
@@ -25,51 +21,41 @@ export function SettingsManager({
   orgName: string
   initialCurrency: string
 }) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [currency, setCurrency] = useState(initialCurrency)
-  const [error, setError] = useState<string | null>(null)
 
   const hasChanges = currency !== initialCurrency
   const currencyOptions: SelectOption[] = CURRENCY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))
 
   const onSubmit = () => {
-    setError(null)
-
     if (!currency || !/^[A-Z]{3}$/.test(currency)) {
-      setError('Invalid currency code. Must be a 3-letter ISO 4217 code.')
+      toast.error('Invalid currency code.', {
+        description: 'Use a 3-letter ISO 4217 code.',
+      })
       return
     }
 
     startTransition(async () => {
       const res = await updateOrganizationCurrency(orgSlug, currency)
       if (res.error) {
-        setError(res.error)
+        toast.error('Unable to update currency', {
+          description: res.error,
+        })
         return
       }
 
-      toast.success('Currency updated successfully.', {
-        description: 'Refreshing…',
-      })
-      // Refresh the page after a short delay so server-rendered currency updates everywhere
-      setTimeout(() => {
-        window.location.reload()
-      }, 900)
+      toast.success('Currency updated successfully.')
+      router.refresh()
     })
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-8">
+    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Settings
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Manage organization settings for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader eyebrow="Organization" title="Settings" description={`Manage organization preferences for ${orgName}.`} />
 
-        <Card>
+        <Card className="mt-6">
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
@@ -104,26 +90,12 @@ export function SettingsManager({
                   value={currencyOptions.find((o) => o.value === currency) ?? null}
                   onChange={(opt) => {
                     setCurrency(opt?.value || initialCurrency)
-                    setError(null)
                   }}
                   isDisabled={isPending}
                   placeholder="Select currency"
                 />
               </div>
             </div>
-
-            <AnimatePresence initial={false}>
-              {error && (
-                <motion.div
-                  initial={fadeUp.initial}
-                  animate={fadeUp.animate}
-                  exit={fadeUp.exit}
-                  className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                >
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             <div className="flex items-center gap-2 pt-2">
               <Button
@@ -142,7 +114,6 @@ export function SettingsManager({
                   size="md"
                   onClick={() => {
                     setCurrency(initialCurrency)
-                    setError(null)
                   }}
                   disabled={isPending}
                 >
@@ -156,4 +127,3 @@ export function SettingsManager({
     </div>
   )
 }
-

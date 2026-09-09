@@ -117,8 +117,6 @@ export async function createRentPeriod(
   // Validate date range
   const periodStart = new Date(formData.period_start)
   const periodEnd = new Date(formData.period_end)
-  const dueDate = new Date(formData.due_date)
-
   if (periodEnd < periodStart) {
     return { data: null, error: 'Period end date must be after or equal to period start date' }
   }
@@ -494,4 +492,3 @@ export async function updateRentPeriodDates(
 
   return { data: rentPeriod as RentPeriod, error: null }
 }
-

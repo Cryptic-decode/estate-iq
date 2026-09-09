@@ -1,16 +1,19 @@
 'use client'
 
-import { useMemo, useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Building2, Pencil, Trash2, Filter, Upload, Download } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { motion } from 'framer-motion'
+import { Building2, Pencil, Trash2, Filter, Upload, Download } from 'lucide-react'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { EntryModeSwitch } from '@/components/app/entry-mode-switch'
+import { PageHeader } from '@/components/app/page-header'
+import { downloadExcelTemplate } from '@/lib/utils/excel-template'
 import {
   createUnit,
   deleteUnit,
@@ -51,12 +54,6 @@ type UnitImportValidation = {
   invalidCount: number
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
-
 export function UnitsManager({
   orgSlug,
   orgName,
@@ -84,7 +81,6 @@ export function UnitsManager({
   const [importValidation, setImportValidation] = useState<UnitImportValidation | null>(null)
   const [isValidatingImport, setIsValidatingImport] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; unit: Unit | null }>({
     open: false,
     unit: null,
@@ -126,7 +122,6 @@ export function UnitsManager({
     setEditingId(null)
     setBuildingId(null)
     setUnitNumber('')
-    setError(null)
   }
 
   const invalidImportRows = useMemo(
@@ -157,21 +152,16 @@ export function UnitsManager({
     })
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   const onSubmit = () => {
-    setError(null)
     if (!buildingId || !buildingId.value) {
-      setError('Building is required.')
+      toast.error('Building is required.')
       return
     }
     const trimmedBuildingId = buildingId.value.trim()
     const trimmedUnitNumber = unitNumber.trim()
 
     if (!trimmedUnitNumber) {
-      setError('Unit number is required.')
+      toast.error('Unit number is required.')
       return
     }
 
@@ -218,7 +208,6 @@ export function UnitsManager({
     const building = buildings.find((b) => b.id === u.building_id)
     setBuildingId(building ? { value: building.id, label: building.name } : null)
     setUnitNumber(u.unit_number)
-    setError(null)
   }
 
   const onDelete = (u: Unit) => {
@@ -229,8 +218,6 @@ export function UnitsManager({
     if (!deleteDialog.unit) return
 
     const u = deleteDialog.unit
-    const buildingName = getBuildingName(u.building_id)
-    setError(null)
     setDeleteDialog({ open: false, unit: null })
     startTransition(async () => {
       const res = await deleteUnit(orgSlug, u.id)
@@ -250,16 +237,21 @@ export function UnitsManager({
   }
 
   const onDownloadTemplate = () => {
-    const workbook = XLSX.utils.book_new()
-    const templateRows = [
-      ['building_name', 'unit_number'],
-      ['Oceanview Apartments', '101'],
-      ['Oceanview Apartments', '102'],
-      ['Maple Heights', 'A-05'],
-    ]
-    const worksheet = XLSX.utils.aoa_to_sheet(templateRows)
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Units')
-    XLSX.writeFile(workbook, 'units-import-template.xlsx')
+    downloadExcelTemplate({
+      filename: 'estateiq-units-sample.xlsx',
+      sheetName: 'Units',
+      headers: ['building_name', 'unit_number'],
+      examples: [
+        ['Oceanview Apartments', '101'],
+        ['Oceanview Apartments', '102'],
+        ['Maple Heights', 'A-05'],
+      ],
+      requiredHeaders: ['building_name', 'unit_number'],
+      notes: [
+        'Building names must exactly match buildings already created in EstateIQ.',
+        'Unit numbers must be unique within each building.',
+      ],
+    })
   }
 
   const onValidateImport = () => {
@@ -321,18 +313,11 @@ export function UnitsManager({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Units
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                Manage units for <span className="font-medium">{orgName}</span>
-              </p>
-        </div>
+        <PageHeader eyebrow="Portfolio" title="Units" description={`Manage rentable units across ${orgName}.`} meta={`${units.length} ${units.length === 1 ? 'unit' : 'units'} across ${buildings.length} ${buildings.length === 1 ? 'building' : 'buildings'}`} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -363,7 +348,6 @@ export function UnitsManager({
                   value={filterBuildingId}
                     onChange={(v) => {
                       setFilterBuildingId(v)
-                      setError(null)
                     }}
                     isDisabled={isPending}
                     placeholder="All buildings"
@@ -371,19 +355,6 @@ export function UnitsManager({
                   />
                 </div>
               </div>
-
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {isLoading ? (
                 <div className="space-y-3">
@@ -404,28 +375,23 @@ export function UnitsManager({
                   ))}
                 </div>
               ) : filteredUnits.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Home className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    {filterBuildingId
+                <EmptyState
+                  title={
+                    filterBuildingId
                       ? 'No units in this building'
                       : buildings.length === 0
                         ? 'No buildings yet'
-                        : 'No units yet'}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {filterBuildingId
-                      ? 'Create your first unit for this building.'
+                        : 'No units yet'
+                  }
+                  description={
+                    filterBuildingId
+                      ? 'Create the first unit for this building.'
                       : buildings.length === 0
-                        ? 'Create a building first, then add units.'
-                        : 'Create your first unit to get started.'}
-                  </p>
-                  {buildings.length > 0 && (
-                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                      Use the form on the right to get started.
-                    </p>
-                  )}
-                </div>
+                        ? 'Create a building first, then add its units.'
+                        : 'Create your first unit to get started.'
+                  }
+                  guidance={buildings.length > 0 ? 'Use the form on this page to get started.' : undefined}
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {filteredUnits.map((u) => (
@@ -485,7 +451,7 @@ export function UnitsManager({
               <CardTitle>{mode === 'create' ? 'Add units' : 'Edit unit'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Switch between individual entry and bulk upload.'
+                  ? 'Add one unit or upload a completed sample spreadsheet.'
                   : 'Update the unit details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
@@ -496,26 +462,11 @@ export function UnitsManager({
                 </div>
               ) : mode === 'create' ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-1 dark:border-zinc-800">
-                    <Button
-                      variant={entryMode === 'individual' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('individual')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Individual
-                    </Button>
-                    <Button
-                      variant={entryMode === 'bulk' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('bulk')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Bulk upload
-                    </Button>
-                  </div>
+                  <EntryModeSwitch
+                    value={entryMode}
+                    onChange={setEntryMode}
+                    disabled={isPending || isValidatingImport || isImporting}
+                  />
 
                   {entryMode === 'individual' ? (
                     <div className="space-y-4">
@@ -707,4 +658,3 @@ export function UnitsManager({
     </div>
   )
 }
-

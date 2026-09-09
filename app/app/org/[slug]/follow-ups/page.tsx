@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUserMemberships, getOrganizationBySlug } from '@/app/actions/organizations'
 import { FollowUpQueue } from '@/components/app/follow-ups/follow-up-queue'
 import { AppLayout } from '@/components/app/app-layout'
+import { getDueTodayRentPeriods, getOverdueRentPeriods } from '@/app/actions/follow-ups'
 
 export default async function FollowUpsPage({
   params,
@@ -28,13 +29,23 @@ export default async function FollowUpsPage({
   }
 
   const orgName = membership.organization.name
-  const orgRes = await getOrganizationBySlug(slug)
+  const [orgRes, overdueRes, dueTodayRes] = await Promise.all([
+    getOrganizationBySlug(slug),
+    getOverdueRentPeriods(slug),
+    getDueTodayRentPeriods(slug),
+  ])
   const currency = orgRes.data?.currency || 'NGN'
 
   return (
     <AppLayout orgSlug={slug} orgName={orgName} currentPath="follow-ups" userRole={membership.role}>
-      <FollowUpQueue orgSlug={slug} orgName={orgName} currency={currency} />
+      <FollowUpQueue
+        orgSlug={slug}
+        orgName={orgName}
+        currency={currency}
+        initialOverduePeriods={overdueRes.data ?? []}
+        initialDueTodayPeriods={dueTodayRes.data ?? []}
+        initialError={overdueRes.error || dueTodayRes.error}
+      />
     </AppLayout>
   )
 }
-

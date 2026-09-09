@@ -466,8 +466,10 @@ export async function importBuildingsFromXlsx(
     return { data: null, error: 'Insufficient permissions' }
   }
 
+  const organizationId = orgRes.data.organizationId
+
   const insertPayload = preview.data.validRows.map((row) => ({
-    organization_id: orgRes.data.organizationId,
+    organization_id: organizationId,
     name: row.name,
     address: row.address,
   }))
@@ -537,4 +539,3 @@ export async function deleteBuilding(
 
   return { error: null }
 }
-

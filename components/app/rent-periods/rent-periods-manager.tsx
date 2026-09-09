@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useMemo, useState, useTransition } from 'react'
+import { motion } from 'framer-motion'
 import { Calendar, Wallet, AlertCircle, CheckCircle2, Clock, Filter, Receipt, Mail } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonLink } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { listRentPeriods, updateRentPeriodStatus, generateNextRentPeriod } from '@/app/actions/rent-periods'
@@ -17,7 +18,7 @@ import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
 import { sendReminderEmail, type ReminderTone } from '@/app/actions/follow-ups'
 import { formatCurrency } from '@/lib/utils/currency'
-import Link from 'next/link'
+import { PageHeader } from '@/components/app/page-header'
 
 type RentPeriod = {
   id: string
@@ -64,12 +65,6 @@ type Building = {
   name: string
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
-
 export function RentPeriodsManager({
   orgSlug,
   orgName,
@@ -102,7 +97,6 @@ export function RentPeriodsManager({
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'DUE' | 'PAID' | 'OVERDUE'>('ALL')
   const [filterRentConfigId, setFilterRentConfigId] = useState<string>('')
   const [generateRentConfigId, setGenerateRentConfigId] = useState<string>('')
-  const [error, setError] = useState<string | null>(null)
   const [reminderTone, setReminderTone] = useState<ReminderTone>('friendly')
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sendTarget, setSendTarget] = useState<{
@@ -130,7 +124,7 @@ export function RentPeriodsManager({
       filtered = filtered.filter((rp) => rp.rent_config_id === filterRentConfigId)
     }
     // Sort: OVERDUE first (by days_overdue desc), then DUE, then PAID
-    return filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (a.status === 'OVERDUE' && b.status !== 'OVERDUE') return -1
       if (a.status !== 'OVERDUE' && b.status === 'OVERDUE') return 1
       if (a.status === 'OVERDUE' && b.status === 'OVERDUE') {
@@ -227,12 +221,7 @@ export function RentPeriodsManager({
     })
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   const onStatusChange = (rentPeriodId: string, newStatus: 'DUE' | 'PAID' | 'OVERDUE') => {
-    setError(null)
     startTransition(async () => {
       const res = await updateRentPeriodStatus(orgSlug, rentPeriodId, { status: newStatus })
       if (res.error) {
@@ -250,7 +239,6 @@ export function RentPeriodsManager({
       return
     }
 
-    setError(null)
     startTransition(async () => {
       const res = await generateNextRentPeriod(orgSlug, generateRentConfigId)
       if (res.error) {
@@ -322,7 +310,7 @@ export function RentPeriodsManager({
     const totalOverdue = rentPeriods
       .filter((rp) => rp.status === 'OVERDUE')
       .reduce((sum, rp) => {
-        const config = getRentConfig(rp.rent_config_id)
+        const config = rentConfigs.find((item) => item.id === rp.rent_config_id)
         return sum + (config?.amount || 0)
       }, 0)
 
@@ -330,53 +318,56 @@ export function RentPeriodsManager({
   }, [rentPeriods, rentConfigs])
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Rent Periods
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Track rent periods and payment status for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="Rent operations"
+          title="Rent periods"
+          description={`Track billing periods, payment status, and overdue exposure for ${orgName}.`}
+          meta={`${stats.total} total · ${stats.overdue} overdue · ${formatCurrency(stats.totalOverdue, currency)} overdue`}
+          actions={
+            <Button variant="secondary" onClick={refresh} disabled={isPending || isLoading} loading={isLoading}>
+              Refresh
+            </Button>
+          }
+        />
 
         {/* Stats */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
-          <Card>
-            <CardContent className="pt-4">
+        <div className="my-8 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Card className="p-4 sm:p-5">
+            <CardContent>
               <div className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
                 {stats.total}
               </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-300">Total periods</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="p-4 sm:p-5">
+            <CardContent>
               <div className="text-2xl font-semibold text-green-600 dark:text-green-400">
                 {stats.paid}
               </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-300">Paid</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="p-4 sm:p-5">
+            <CardContent>
               <div className="text-2xl font-semibold text-amber-600 dark:text-amber-400">
                 {stats.due}
               </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-300">Due</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="p-4 sm:p-5">
+            <CardContent>
               <div className="text-2xl font-semibold text-red-600 dark:text-red-400">
                 {stats.overdue}
               </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-300">Overdue</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4">
+          <Card className="col-span-2 p-4 sm:p-5 lg:col-span-1">
+            <CardContent>
               <div className="text-2xl font-semibold text-red-600 dark:text-red-400">
                 {formatCurrency(stats.totalOverdue, currency)}
               </div>
@@ -386,23 +377,13 @@ export function RentPeriodsManager({
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <CardHeader>
             <div>
               <CardTitle>Rent periods</CardTitle>
               <CardDescription className="mt-1">
                 View and manage rent periods. Generate new periods or update status to track payments.
               </CardDescription>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={refresh}
-              disabled={isPending || isLoading}
-              loading={isLoading}
-              className="shrink-0"
-            >
-              Refresh
-            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Generate Period Section */}
@@ -411,8 +392,8 @@ export function RentPeriodsManager({
                 <div className="mb-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                   Create billing period
                 </div>
-                <p className="mb-3 text-xs text-zinc-600 dark:text-zinc-300">
-                  A rent schedule defines the terms (amount, frequency). A billing period is a specific instance to track (e.g., "January 2025"). Select a rent schedule to create the next billing period.
+                <p className="mb-3 max-w-3xl text-xs leading-5 text-zinc-600 dark:text-zinc-300">
+                  A rent schedule defines the amount and frequency. Select one to create its next trackable billing period.
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <div className="flex-1">
@@ -421,7 +402,6 @@ export function RentPeriodsManager({
                       value={rentConfigOptions.find((o) => o.value === generateRentConfigId) ?? null}
                       onChange={(opt) => {
                         setGenerateRentConfigId(opt?.value || '')
-                        setError(null)
                       }}
                       isDisabled={isPending}
                       placeholder="Select a rent schedule"
@@ -441,62 +421,67 @@ export function RentPeriodsManager({
               </div>
             )}
             {/* Filters */}
-            <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 sm:flex-row">
-              <div className="flex flex-1 items-center gap-2">
-                <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                <div className="flex-1">
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <Filter className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                  Filters
+                </div>
+                {(filterStatus !== 'ALL' || filterRentConfigId) && (
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onClick={() => {
+                      setFilterStatus('ALL')
+                      setFilterRentConfigId('')
+                    }}
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
                   <Select
+                    label="Status"
                     options={statusOptions}
                     value={statusOptions.find((o) => o.value === filterStatus) ?? null}
                     onChange={(opt) => {
                       setFilterStatus((opt?.value || 'ALL') as typeof filterStatus)
-                      setError(null)
                     }}
                     isDisabled={isPending}
                     placeholder="All statuses"
                   />
                 </div>
-              </div>
-              <div className="flex-1">
-                <Select
-                  options={[{ value: '', label: 'All rent schedules' }, ...rentConfigOptions]}
-                  value={
-                    filterRentConfigId
-                      ? rentConfigOptions.find((o) => o.value === filterRentConfigId) ?? null
-                      : { value: '', label: 'All rent schedules' }
-                  }
-                  onChange={(opt) => {
-                    setFilterRentConfigId(opt?.value || '')
-                    setError(null)
-                  }}
-                  isDisabled={isPending}
-                  placeholder="All rent schedules"
-                />
-              </div>
-              <div className="flex-1">
-                <Select
-                  options={toneOptions}
-                  value={toneOptions.find((o) => o.value === reminderTone) ?? toneOptions[0]}
-                  onChange={(opt) => setReminderTone(((opt?.value || 'friendly') as ReminderTone) ?? 'friendly')}
-                  isDisabled={isPending}
-                  isSearchable={false}
-                  placeholder="Reminder tone"
-                />
+                <div>
+                  <Select
+                    label="Rent schedule"
+                    options={[{ value: '', label: 'All rent schedules' }, ...rentConfigOptions]}
+                    value={
+                      filterRentConfigId
+                        ? rentConfigOptions.find((o) => o.value === filterRentConfigId) ?? null
+                        : { value: '', label: 'All rent schedules' }
+                    }
+                    onChange={(opt) => {
+                      setFilterRentConfigId(opt?.value || '')
+                    }}
+                    isDisabled={isPending}
+                    placeholder="All rent schedules"
+                  />
+                </div>
+                <div>
+                  <Select
+                    label="Reminder tone"
+                    options={toneOptions}
+                    value={toneOptions.find((o) => o.value === reminderTone) ?? toneOptions[0]}
+                    onChange={(opt) => setReminderTone(((opt?.value || 'friendly') as ReminderTone) ?? 'friendly')}
+                    isDisabled={isPending}
+                    isSearchable={false}
+                    placeholder="Reminder tone"
+                  />
+                </div>
               </div>
             </div>
-
-            <AnimatePresence initial={false}>
-              {error && (
-                <motion.div
-                  initial={fadeUp.initial}
-                  animate={fadeUp.animate}
-                  exit={fadeUp.exit}
-                  className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                >
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {isLoading ? (
                 <div className="space-y-3">
@@ -514,24 +499,15 @@ export function RentPeriodsManager({
                   ))}
                 </div>
               ) : filteredRentPeriods.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Calendar className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    {rentConfigs.length === 0
-                      ? 'Prerequisites needed'
-                      : 'No rent periods found'}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {rentConfigs.length === 0
-                      ? 'Create rent schedules first, then rent periods will be generated.'
-                      : 'Generate rent periods for your rent schedules to start tracking payments.'}
-                  </p>
-                  {rentConfigs.length > 0 && (
-                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                      Use the "Generate next period" button above to get started.
-                    </p>
-                  )}
-                </div>
+                <EmptyState
+                  title={rentConfigs.length === 0 ? 'A rent schedule is required' : 'No rent periods found'}
+                  description={
+                    rentConfigs.length === 0
+                      ? 'Create a rent schedule before generating rent periods.'
+                      : 'Generate a rent period to begin tracking due and paid rent.'
+                  }
+                  guidance={rentConfigs.length > 0 ? 'Select a rent schedule above to generate its next period.' : undefined}
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {filteredRentPeriods.map((rp) => {
@@ -539,7 +515,7 @@ export function RentPeriodsManager({
                   return (
                     <div
                       key={rp.id}
-                      className={`flex items-start justify-between gap-4 px-4 py-4 transition-colors ${
+                      className={`flex flex-col gap-4 px-4 py-4 transition-colors lg:flex-row lg:items-start lg:justify-between ${
                         rp.status === 'OVERDUE'
                           ? rp.days_overdue > 30
                             ? 'bg-red-50 border-l-4 border-red-600 dark:bg-red-950/20 dark:border-red-500'
@@ -552,7 +528,7 @@ export function RentPeriodsManager({
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate font-medium text-zinc-900 dark:text-zinc-50">
                             {config ? getOccupancyLabel(config.occupancy_id) : 'Unknown occupancy'}
                           </span>
@@ -578,20 +554,13 @@ export function RentPeriodsManager({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
                         {rp.status !== 'PAID' && (
                           <>
-                            <Link href={`/app/org/${orgSlug}/payments?rentPeriodId=${rp.id}`}>
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                disabled={isPending || isLoading}
-                                className="flex items-center gap-1.5"
-                              >
-                                <Receipt className="h-3.5 w-3.5" />
-                                Record payment
-                              </Button>
-                            </Link>
+                            <ButtonLink href={`/app/org/${orgSlug}/payments?rentPeriodId=${rp.id}`} size="sm">
+                              <Receipt className="h-3.5 w-3.5" />
+                              Record payment
+                            </ButtonLink>
                             <Button
                               variant="secondary"
                               size="sm"
@@ -677,4 +646,3 @@ export function RentPeriodsManager({
     </div>
   )
 }
-

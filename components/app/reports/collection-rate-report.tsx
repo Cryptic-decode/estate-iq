@@ -1,15 +1,16 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { LineChart, RefreshCw, Calendar } from 'lucide-react'
+import { RefreshCw, Calendar } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonLink } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { formatCurrency } from '@/lib/utils/currency'
 import { getCollectionRate, type CollectionRateReport } from '@/app/actions/reports'
+import { PageHeader } from '@/components/app/page-header'
 
 export function CollectionRateReportView({
   orgSlug,
@@ -96,38 +97,22 @@ export function CollectionRateReportView({
   const isEmpty = (report?.metrics.periodCount ?? 0) === 0
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <LineChart className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-              Collection Rate
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Measure rent collected vs. due across a selected date range for <span className="font-medium">{orgName}</span>.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <Link href={`/app/org/${orgSlug}/reports`} className="w-full sm:w-auto">
-            <Button variant="secondary" size="md" className="w-full">
-              Back to reports
-            </Button>
-          </Link>
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={refresh}
-            disabled={isPending || isLoading}
-            loading={isLoading}
-            className="w-full sm:w-auto"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
+      <div className="mb-8">
+        <PageHeader
+          eyebrow="Reports"
+          title="Collection rate"
+          description={`Measure rent collected against rent due across a selected period for ${orgName}.`}
+          actions={
+            <>
+              <ButtonLink href={`/app/org/${orgSlug}/reports`} variant="secondary" size="md" className="w-full sm:w-auto">Back to reports</ButtonLink>
+              <Button variant="secondary" size="md" onClick={refresh} disabled={isPending || isLoading} loading={isLoading} className="w-full sm:w-auto">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Date Range Picker */}
@@ -287,12 +272,10 @@ export function CollectionRateReportView({
               <Skeleton className="h-10" />
             </div>
           ) : isEmpty ? (
-            <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">No rent periods in date range</p>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                Adjust the date range to see collection rate metrics for periods with due dates in that range.
-              </p>
-            </div>
+            <EmptyState
+              title="No rent periods in this date range"
+              description="Adjust the dates to include rent periods with due dates in the selected range."
+            />
           ) : (
             <div className="space-y-4">
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
@@ -376,4 +359,3 @@ export function CollectionRateReportView({
     </div>
   )
 }
-

@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4 dark:bg-zinc-950">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
           <Card className="w-full max-w-md">
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -86,4 +86,3 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return this.props.children
   }
 }
-

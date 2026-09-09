@@ -2,14 +2,15 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Link from 'next/link'
-import { Building2, ChevronDown, ChevronRight, AlertCircle, Clock, Receipt, Home, User, Calendar, Wallet } from 'lucide-react'
+import { Building2, ChevronDown, ChevronRight, AlertCircle, Clock, Home, User, Calendar, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Button, ButtonLink } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { getUnpaidRentPeriodsByBuilding, type BuildingWithUnpaidPeriods } from '@/app/actions/follow-ups'
 import { formatCurrency } from '@/lib/utils/currency'
+import { PageHeader } from '@/components/app/page-header'
 
 const fadeUp = {
   initial: { opacity: 0, y: 6 },
@@ -89,15 +90,19 @@ export function BuildingUnpaidView({
   const totalDueCount = buildings.reduce((sum, b) => sum + b.dueCount, 0)
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Unpaid Rent by Building
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            View unpaid rent periods grouped by building for <span className="font-medium">{orgName}</span>
-          </p>
+        <div className="mb-8">
+          <PageHeader
+            eyebrow="Operations"
+            title="Unpaid rent by building"
+            description={`Review outstanding rent in portfolio context for ${orgName}.`}
+            actions={
+              <ButtonLink href={`/app/org/${orgSlug}/reports`} variant="secondary" fullWidth className="sm:w-auto">
+                Back to reports
+              </ButtonLink>
+            }
+          />
         </div>
 
         {/* Summary Stats */}
@@ -173,20 +178,15 @@ export function BuildingUnpaidView({
                 ))}
               </div>
             ) : buildings.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                <Building2 className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">No unpaid rent periods</p>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                  Great! All rent periods are paid. All buildings are up to date.
-                </p>
-                <div className="mt-4">
-                  <Link href={`/app/org/${orgSlug}/rent-periods`}>
-                    <Button variant="secondary" size="sm">
-                      View all periods
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+              <EmptyState
+                title="No unpaid rent periods"
+                description="Every building is up to date."
+                action={
+                  <ButtonLink href={`/app/org/${orgSlug}/rent-periods`} variant="secondary" size="sm">
+                    View all periods
+                  </ButtonLink>
+                }
+              />
             ) : (
               <div className="space-y-3">
                 <AnimatePresence>
@@ -351,22 +351,23 @@ export function BuildingUnpaidView({
 
                                           {/* Actions */}
                                           <div className="flex flex-col gap-2 sm:flex-row shrink-0">
-                                            <Link href={`/app/org/${orgSlug}/payments?rentPeriodId=${period.id}`}>
-                                              <Button
-                                                variant="primary"
-                                                size="sm"
-                                                className="w-full sm:w-auto"
-                                                disabled={isPending}
-                                              >
-                                                <Receipt className="mr-1.5 h-4 w-4" />
-                                                Record payment
-                                              </Button>
-                                            </Link>
-                                            <Link href={`/app/org/${orgSlug}/rent-periods`}>
-                                              <Button variant="secondary" size="sm" className="w-full sm:w-auto" disabled={isPending}>
-                                                View details
-                                              </Button>
-                                            </Link>
+                                            <ButtonLink
+                                              href={`/app/org/${orgSlug}/payments?rentPeriodId=${period.id}`}
+                                              size="sm"
+                                              fullWidth
+                                              className="sm:w-auto"
+                                            >
+                                              Record payment
+                                            </ButtonLink>
+                                            <ButtonLink
+                                              href={`/app/org/${orgSlug}/rent-periods`}
+                                              variant="secondary"
+                                              size="sm"
+                                              fullWidth
+                                              className="sm:w-auto"
+                                            >
+                                              View details
+                                            </ButtonLink>
                                           </div>
                                         </div>
                                       </motion.div>
@@ -389,4 +390,3 @@ export function BuildingUnpaidView({
     </div>
   )
 }
-

@@ -1,15 +1,18 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Download, FileSpreadsheet, Mail, Pencil, Phone, Trash2, Upload, UserCheck, Users } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Download, Mail, Pencil, Phone, Trash2, Upload, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { EntryModeSwitch } from '@/components/app/entry-mode-switch'
+import { PageHeader } from '@/components/app/page-header'
+import { downloadExcelTemplate } from '@/lib/utils/excel-template'
 import {
   createTenant,
   deleteTenant,
@@ -46,12 +49,6 @@ type TenantImportValidation = {
   invalidCount: number
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
-}
-
 export function TenantsManager({
   orgSlug,
   orgName,
@@ -79,7 +76,6 @@ export function TenantsManager({
   const [importValidation, setImportValidation] = useState<TenantImportValidation | null>(null)
   const [isValidatingImport, setIsValidatingImport] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; tenant: Tenant | null }>({
     open: false,
     tenant: null,
@@ -99,7 +95,6 @@ export function TenantsManager({
     setGuarantorFullName('')
     setGuarantorEmail('')
     setGuarantorPhone('')
-    setError(null)
   }
 
   const refresh = () => {
@@ -116,7 +111,6 @@ export function TenantsManager({
   }
 
   const onSubmit = () => {
-    setError(null)
     const trimmedFullName = fullName.trim()
     const trimmedEmail = email.trim()
     const trimmedPhone = phone.trim()
@@ -125,7 +119,7 @@ export function TenantsManager({
     const trimmedGuarantorPhone = guarantorPhone.trim()
 
     if (!trimmedFullName) {
-      setError('Full name is required.')
+      toast.error('Full name is required.')
       return
     }
 
@@ -183,7 +177,6 @@ export function TenantsManager({
     setGuarantorFullName(t.guarantor_full_name ?? '')
     setGuarantorEmail(t.guarantor_email ?? '')
     setGuarantorPhone(t.guarantor_phone ?? '')
-    setError(null)
   }
 
   const onDelete = (t: Tenant) => {
@@ -194,7 +187,6 @@ export function TenantsManager({
     if (!deleteDialog.tenant) return
 
     const t = deleteDialog.tenant
-    setError(null)
     setDeleteDialog({ open: false, tenant: null })
     startTransition(async () => {
       const res = await deleteTenant(orgSlug, t.id)
@@ -214,9 +206,10 @@ export function TenantsManager({
   }
 
   const onDownloadTemplate = () => {
-    const workbook = XLSX.utils.book_new()
-    const templateRows = [
-      [
+    downloadExcelTemplate({
+      filename: 'estateiq-tenants-sample.xlsx',
+      sheetName: 'Tenants',
+      headers: [
         'full_name',
         'email',
         'phone',
@@ -224,18 +217,27 @@ export function TenantsManager({
         'guarantor_email',
         'guarantor_phone',
       ],
-      [
+      examples: [[
         'Ada Nwosu',
         'ada@example.com',
         '+2348012345678',
         'Ifeanyi Nwosu',
         'ifeanyi@example.com',
         '+2348098765432',
+      ]],
+      requiredHeaders: [
+        'full_name',
+        'email',
+        'phone',
+        'guarantor_full_name',
+        'guarantor_email',
+        'guarantor_phone',
       ],
-    ]
-    const worksheet = XLSX.utils.aoa_to_sheet(templateRows)
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tenants')
-    XLSX.writeFile(workbook, 'tenants-import-template.xlsx')
+      notes: [
+        'Email, phone, and guarantor fields may be left blank.',
+        'If guarantor email or phone is provided, guarantor full name is required.',
+      ],
+    })
   }
 
   const onValidateImport = () => {
@@ -302,18 +304,11 @@ export function TenantsManager({
   )
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Tenants
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Manage tenants for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader eyebrow="Portfolio" title="Tenants" description={`Manage tenant records for ${orgName}.`} meta={`${tenants.length} ${tenants.length === 1 ? 'tenant' : 'tenants'}`} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -335,19 +330,6 @@ export function TenantsManager({
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
@@ -367,18 +349,11 @@ export function TenantsManager({
                   ))}
                 </div>
               ) : tenants.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Users className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    No tenants yet
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    Create your first tenant to get started.
-                  </p>
-                  <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                    Use the form on the right to get started.
-                  </p>
-                </div>
+                <EmptyState
+                  title="No tenants yet"
+                  description="Create your first tenant record to continue setting up the portfolio."
+                  guidance="Use the form on this page to get started."
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {tenants.map((t) => (
@@ -451,33 +426,18 @@ export function TenantsManager({
               <CardTitle>{mode === 'create' ? 'Add tenants' : 'Edit tenant'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Switch between individual entry and bulk upload.'
+                  ? 'Add one tenant or upload a completed sample spreadsheet.'
                   : 'Update the tenant details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {mode === 'create' ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2 rounded-md border border-zinc-200 p-1 dark:border-zinc-800">
-                    <Button
-                      variant={entryMode === 'individual' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('individual')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Individual
-                    </Button>
-                    <Button
-                      variant={entryMode === 'bulk' ? 'primary' : 'tertiary'}
-                      size="sm"
-                      onClick={() => setEntryMode('bulk')}
-                      disabled={isPending || isValidatingImport || isImporting}
-                      fullWidth
-                    >
-                      Bulk upload
-                    </Button>
-                  </div>
+                  <EntryModeSwitch
+                    value={entryMode}
+                    onChange={setEntryMode}
+                    disabled={isPending || isValidatingImport || isImporting}
+                  />
 
                   {entryMode === 'individual' ? (
                     <div className="space-y-4">
@@ -748,4 +708,3 @@ export function TenantsManager({
     </div>
   )
 }
-

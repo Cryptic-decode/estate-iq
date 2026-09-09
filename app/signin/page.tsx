@@ -9,6 +9,7 @@ import { AuthContainer } from '@/components/auth/auth-container'
 import { AuthHero } from '@/components/auth/auth-hero'
 import { AuthCard } from '@/components/auth/auth-card'
 import { AnimatedAuthForm } from '@/components/auth/animated-auth-form'
+import { toast } from 'sonner'
 
 function SignInForm() {
   const router = useRouter()
@@ -17,28 +18,37 @@ function SignInForm() {
   const [email, setEmail] = useState(emailFromQuery)
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
-    setError(null)
 
-    const supabase = createClient()
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const supabase = createClient()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (signInError) {
-      setError(signInError.message)
+      if (signInError) {
+        const description = signInError.message.toLowerCase().includes('invalid login credentials')
+          ? 'The email or password is incorrect.'
+          : 'Please check your details and try again.'
+
+        toast.error('Unable to sign in', { description })
+        return
+      }
+
+      const redirectTo = searchParams.get('redirectTo') || '/app'
+      router.push(redirectTo)
+      router.refresh()
+    } catch {
+      toast.error('Unable to sign in', {
+        description: 'Check your connection and try again.',
+      })
+    } finally {
       setLoading(false)
-      return
     }
-
-    const redirectTo = searchParams.get('redirectTo') || '/app'
-    router.push(redirectTo)
-    router.refresh()
   }
 
   return (
@@ -54,7 +64,6 @@ function SignInForm() {
         setPassword={setPassword}
         onSubmit={handleSignIn}
         loading={loading}
-        error={error}
       />
     </AuthCard>
   )

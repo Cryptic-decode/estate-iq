@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState, useTransition, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useMemo, useState, useTransition } from 'react'
+import { motion } from 'framer-motion'
 import { Wallet, Calendar, Pencil, Trash2, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,12 +10,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { createRentConfig, deleteRentConfig, listRentConfigs, updateRentConfig } from '@/app/actions/rent-configs'
+import { EmptyState } from '@/components/ui/empty-state'
+import { BulkImportPanel } from '@/components/app/bulk-import-panel'
+import { EntryModeSwitch } from '@/components/app/entry-mode-switch'
+import { PageHeader } from '@/components/app/page-header'
+import {
+  createRentConfig,
+  deleteRentConfig,
+  importRentConfigsFromXlsx,
+  listRentConfigs,
+  previewRentConfigImport,
+  updateRentConfig,
+} from '@/app/actions/rent-configs'
 import { listOccupancies } from '@/app/actions/occupancies'
 import { listUnits } from '@/app/actions/units'
 import { listTenants } from '@/app/actions/tenants'
 import { listBuildings } from '@/app/actions/buildings'
 import { formatCurrency } from '@/lib/utils/currency'
+import { downloadExcelTemplate } from '@/lib/utils/excel-template'
 
 type RentConfig = {
   id: string
@@ -50,10 +62,20 @@ type Building = {
   name: string
 }
 
-const fadeUp = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.18 } },
-  exit: { opacity: 0, y: 6, transition: { duration: 0.12 } },
+type RentConfigImportRowResult = {
+  rowNumber: number
+  building_name: string
+  unit_number: string
+  tenant_name: string
+  status: 'valid' | 'invalid'
+  error: string | null
+}
+
+type RentConfigImportPreview = {
+  rows: RentConfigImportRowResult[]
+  totalRows: number
+  validCount: number
+  invalidCount: number
 }
 
 const CYCLE_OPTIONS = [
@@ -109,12 +131,16 @@ export function RentConfigsManager({
 
   const [mode, setMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual')
 
   const [occupancyId, setOccupancyId] = useState('')
   const [amount, setAmount] = useState('')
   const [cycle, setCycle] = useState<'MONTHLY' | 'WEEKLY' | 'QUARTERLY' | 'YEARLY'>('MONTHLY')
   const [dueDay, setDueDay] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<RentConfigImportPreview | null>(null)
+  const [isValidatingImport, setIsValidatingImport] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; rentConfig: RentConfig | null }>({
     open: false,
     rentConfig: null,
@@ -183,7 +209,6 @@ export function RentConfigsManager({
     setAmount('')
     setCycle('MONTHLY')
     setDueDay('')
-    setError(null)
   }
 
   const refresh = () => {
@@ -227,28 +252,22 @@ export function RentConfigsManager({
     })
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
   const onSubmit = () => {
-    setError(null)
-
     if (!occupancyId.trim()) {
-      setError('Occupancy is required.')
+      toast.error('Occupancy is required.')
       return
     }
 
     const amountNum = parseFloat(amount)
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
-      setError('Amount must be greater than 0.')
+      toast.error('Amount must be greater than 0.')
       return
     }
 
     const dueDayNum = parseInt(dueDay)
     const dueDayMax = cycle === 'WEEKLY' ? 7 : 31
     if (!dueDay || isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > dueDayMax) {
-      setError(cycle === 'WEEKLY' ? 'Due weekday must be between 1 and 7.' : 'Due day must be between 1 and 31.')
+      toast.error(cycle === 'WEEKLY' ? 'Due weekday must be between 1 and 7.' : 'Due day must be between 1 and 31.')
       return
     }
 
@@ -301,7 +320,6 @@ export function RentConfigsManager({
     setAmount(rc.amount.toString())
     setCycle(rc.cycle)
     setDueDay(rc.due_day.toString())
-    setError(null)
   }
 
   const onDelete = (rc: RentConfig) => {
@@ -312,7 +330,6 @@ export function RentConfigsManager({
     if (!deleteDialog.rentConfig) return
 
     const rc = deleteDialog.rentConfig
-    setError(null)
     setDeleteDialog({ open: false, rentConfig: null })
     startTransition(async () => {
       const res = await deleteRentConfig(orgSlug, rc.id)
@@ -326,20 +343,85 @@ export function RentConfigsManager({
     })
   }
 
+  const onDownloadTemplate = () => {
+    downloadExcelTemplate({
+      filename: 'estateiq-rent-schedules-sample.xlsx',
+      sheetName: 'Rent Schedules',
+      headers: ['building_name', 'unit_number', 'tenant_name', 'tenant_email', 'active_from', 'amount', 'cycle', 'due_day'],
+      examples: [
+        ['Oceanview Apartments', '101', 'Ada Nwosu', 'ada@example.com', '2026-01-01', 250000, 'MONTHLY', 5],
+        ['Maple Heights', 'A-05', 'John Doe', '', '2026-02-01', 1200000, 'YEARLY', 1],
+      ],
+      requiredHeaders: ['building_name', 'unit_number', 'tenant_name', 'tenant_email', 'active_from', 'amount', 'cycle', 'due_day'],
+      notes: [
+        'The matching occupancy must already exist in EstateIQ.',
+        'Tenant email is optional, but use it when more than one tenant has the same name.',
+        'Use the occupancy active_from date in YYYY-MM-DD format.',
+        'Cycle must be MONTHLY, WEEKLY, QUARTERLY, or YEARLY.',
+        'For WEEKLY schedules, due_day is 1 to 7. For other cycles, use 1 to 31.',
+      ],
+    })
+  }
+
+  const onImportFileChange = (file: File | null) => {
+    setImportFile(file)
+    setImportPreview(null)
+  }
+
+  const onValidateImport = () => {
+    if (!importFile) return
+    setIsValidatingImport(true)
+    startTransition(async () => {
+      const res = await previewRentConfigImport(orgSlug, importFile)
+      setIsValidatingImport(false)
+      if (res.error || !res.data) {
+        setImportPreview(null)
+        toast.error(res.error ?? 'Failed to validate rent schedule import')
+        return
+      }
+      setImportPreview(res.data)
+      if (res.data.invalidCount > 0) toast.warning('Validation completed with errors.')
+      else toast.success('Validation completed. Ready to import.')
+    })
+  }
+
+  const onRunImport = () => {
+    if (!importFile) return
+    setIsImporting(true)
+    startTransition(async () => {
+      const res = await importRentConfigsFromXlsx(orgSlug, importFile)
+      setIsImporting(false)
+      if (res.error) {
+        if (res.data?.rows) {
+          setImportPreview({
+            rows: res.data.rows,
+            totalRows: res.data.totalRows,
+            validCount: res.data.rows.filter((row) => row.status === 'valid').length,
+            invalidCount: res.data.rows.filter((row) => row.status === 'invalid').length,
+          })
+        }
+        toast.error(res.error)
+        return
+      }
+      setImportFile(null)
+      setImportPreview(null)
+      refresh()
+      toast.success(`Imported ${res.data?.insertedCount ?? 0} rent schedules successfully.`)
+    })
+  }
+
+  const invalidImportRows = useMemo(
+    () => (importPreview?.rows ?? []).filter((row) => row.status === 'invalid'),
+    [importPreview]
+  )
+
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2 } }}>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Rent Schedules
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Define rent amounts and schedules for <span className="font-medium">{orgName}</span>
-          </p>
-        </div>
+        <PageHeader eyebrow="Rent operations" title="Rent schedules" description={`Define rent amounts, billing cycles, and due dates for ${orgName}.`} meta={`${rentConfigs.length} ${rentConfigs.length === 1 ? 'schedule' : 'schedules'}`} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* List */}
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -374,26 +456,12 @@ export function RentConfigsManager({
                     }
                     onChange={(opt) => {
                       setFilterOccupancyId(opt?.value || '')
-                      setError(null)
                     }}
                     isDisabled={isPending}
                     placeholder="All occupancies"
                   />
                 </div>
               </div>
-
-              <AnimatePresence initial={false}>
-                {error && (
-                  <motion.div
-                    initial={fadeUp.initial}
-                    animate={fadeUp.animate}
-                    exit={fadeUp.exit}
-                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {isLoading ? (
                 <div className="space-y-3">
@@ -414,24 +482,15 @@ export function RentConfigsManager({
                   ))}
                 </div>
               ) : filteredRentConfigs.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-                  <Wallet className="mx-auto h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-                  <p className="mt-4 text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    {occupancies.length === 0
-                      ? 'Prerequisites needed'
-                      : 'No rent schedules yet'}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                    {occupancies.length === 0
-                      ? 'Create occupancies first, then add rent schedules for them.'
-                      : 'Create your first rent schedule to define payment terms.'}
-                  </p>
-                  {occupancies.length > 0 && (
-                    <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                      Use the form on the right to get started.
-                    </p>
-                  )}
-                </div>
+                <EmptyState
+                  title={occupancies.length === 0 ? 'An occupancy is required' : 'No rent schedules yet'}
+                  description={
+                    occupancies.length === 0
+                      ? 'Create an occupancy before defining its rent schedule.'
+                      : 'Create the first rent schedule to define amount, cycle, and due date.'
+                  }
+                  guidance={occupancies.length > 0 ? 'Use the form on this page to get started.' : undefined}
+                />
               ) : (
                 <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
                   {filteredRentConfigs.map((rc) => (
@@ -499,7 +558,7 @@ export function RentConfigsManager({
               <CardTitle>{mode === 'create' ? 'Add a rent schedule' : 'Edit rent schedule'}</CardTitle>
               <CardDescription>
                 {mode === 'create'
-                  ? 'Define rent amount, cycle, and due day for an occupancy.'
+                  ? 'Add one schedule or upload a completed sample spreadsheet.'
                   : 'Update the rent schedule details. Changes save immediately.'}
               </CardDescription>
             </CardHeader>
@@ -510,7 +569,36 @@ export function RentConfigsManager({
                 </div>
               ) : (
                 <>
-                  <Select
+                  {mode === 'create' ? (
+                    <EntryModeSwitch
+                      value={entryMode}
+                      onChange={setEntryMode}
+                      disabled={isPending || isValidatingImport || isImporting}
+                    />
+                  ) : null}
+
+                  {mode === 'create' && entryMode === 'bulk' ? (
+                    <BulkImportPanel
+                      fileInputId="rent-schedule-import-file"
+                      instructions={<>Upload the completed sample. EstateIQ matches the correct occupancy using <span className="font-medium">building, unit, tenant, and active from date</span>.</>}
+                      file={importFile}
+                      preview={importPreview}
+                      invalidRows={invalidImportRows.map((row) => ({
+                        rowNumber: row.rowNumber,
+                        label: `${row.tenant_name} · ${row.building_name} ${row.unit_number}`,
+                        error: row.error,
+                      }))}
+                      disabled={isPending || isValidatingImport || isImporting}
+                      isValidating={isValidatingImport}
+                      isImporting={isImporting}
+                      onDownloadSample={onDownloadTemplate}
+                      onFileChange={onImportFileChange}
+                      onValidate={onValidateImport}
+                      onImport={onRunImport}
+                    />
+                  ) : (
+                    <>
+                    <Select
                     label="Occupancy *"
                     options={occupancyOptions}
                     value={occupancyOptions.find((o) => o.value === occupancyId) ?? null}
@@ -581,6 +669,8 @@ export function RentConfigsManager({
                       Cancel editing
                     </Button>
                   ) : null}
+                    </>
+                  )}
                 </>
               )}
             </CardContent>
@@ -605,4 +695,3 @@ export function RentConfigsManager({
     </div>
   )
 }
-

@@ -28,11 +28,11 @@ function CheckEmailContent() {
           >
             <motion.div variants={itemVariants} className="space-y-6">
               {email ? (
-                <div className="rounded-lg border border-zinc-200 bg-white/60 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-200">
+                <div className="rounded-lg border border-border bg-secondary/60 p-4 text-sm text-secondary-foreground">
                   Confirmation sent to: <span className="font-medium">{email}</span>
                 </div>
               ) : (
-                <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                <p className="text-sm text-muted-foreground">
                   Check your inbox for a confirmation link.
                 </p>
               )}
@@ -51,7 +51,7 @@ function CheckEmailContent() {
                   I’ve confirmed my email — Sign in
                 </AuthButton>
 
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="text-xs text-muted-foreground">
                   After you sign in, we’ll prompt you to create your company (onboarding).
                 </p>
               </div>
@@ -87,5 +87,4 @@ export default function CheckEmailPage() {
     </Suspense>
   )
 }
-
 

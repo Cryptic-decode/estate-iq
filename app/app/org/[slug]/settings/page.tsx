@@ -29,7 +29,7 @@ export default async function SettingsPage({
 
   // Only OWNER can access settings
   if (membership.role !== 'OWNER') {
-    redirect(`/app/org/${slug}`)
+    redirect(`/app/access-denied?returnTo=${encodeURIComponent(`/app/org/${slug}`)}`)
   }
 
   const orgName = membership.organization.name
@@ -49,4 +49,3 @@ export default async function SettingsPage({
     </AppLayout>
   )
 }
-

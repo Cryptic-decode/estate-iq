@@ -1,12 +1,14 @@
 'use server'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 export type OrgContext = {
   organizationId: string
   role: string
 }
 
 export async function getOrgContextForUser(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   orgSlug: string
 ): Promise<{ data: OrgContext | null; error: string | null }> {
@@ -34,10 +36,9 @@ export async function getOrgContextForUser(
   return {
     data: {
       organizationId: org.id as string,
-      role: (membership as any).role as string,
+      role: String(membership.role),
     },
     error: null,
   }
 }
-
 

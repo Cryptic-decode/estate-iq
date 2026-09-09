@@ -442,8 +442,10 @@ export async function importUnitsFromXlsx(
     return { data: null, error: 'Insufficient permissions' }
   }
 
+  const organizationId = orgRes.data.organizationId
+
   const payload = validation.data.validRows.map((row) => ({
-    organization_id: orgRes.data.organizationId,
+    organization_id: organizationId,
     building_id: row.building_id,
     unit_number: row.unit_number,
   }))
@@ -610,4 +612,3 @@ export async function deleteUnit(
 
   return { error: null }
 }
-

@@ -36,11 +36,10 @@ export default async function AuditTrailPage({
       <AuditTrailView
         orgSlug={slug}
         orgName={orgName}
-        initialLogs={(logsRes.data as any) ?? []}
+        initialLogs={logsRes.data ?? []}
         initialError={logsRes.error}
       />
     </AppLayout>
   )
 }
-
 

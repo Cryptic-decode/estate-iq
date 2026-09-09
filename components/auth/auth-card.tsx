@@ -12,25 +12,22 @@ interface AuthCardProps {
 
 export function AuthCard({ title, description, children }: AuthCardProps) {
   return (
-    <div className="w-full rounded-2xl border-0 bg-white/80 p-8 shadow-2xl backdrop-blur-sm dark:bg-zinc-800/80 sm:p-10">
-      {/* Card Header */}
+    <div className="w-full rounded-2xl border border-border bg-card p-7 text-card-foreground shadow-xl shadow-[#123a32]/8 dark:shadow-black/20 sm:p-9">
       <motion.div
         variants={springScaleVariants}
         initial="initial"
         animate="animate"
-        className="mb-8 text-center"
+        className="mb-8"
       >
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+        <h2 className="font-estate-serif text-3xl tracking-tight text-card-foreground">
           {title}
         </h2>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {description}
         </p>
       </motion.div>
 
-      {/* Card Content */}
       <div>{children}</div>
     </div>
   )
 }
-

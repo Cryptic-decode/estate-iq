@@ -1,11 +1,52 @@
-import { ButtonHTMLAttributes, forwardRef } from 'react'
+import Link from 'next/link'
+import { AnchorHTMLAttributes, ButtonHTMLAttributes, forwardRef } from 'react'
 import { Spinner } from './spinner'
 
+type ButtonVariant = 'primary' | 'secondary' | 'tertiary'
+type ButtonSize = 'sm' | 'md' | 'lg'
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'tertiary'
-  size?: 'sm' | 'md' | 'lg'
+  variant?: ButtonVariant
+  size?: ButtonSize
   fullWidth?: boolean
   loading?: boolean
+}
+
+export interface ButtonLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  href: string
+  variant?: ButtonVariant
+  size?: ButtonSize
+  fullWidth?: boolean
+}
+
+function buttonClassNames({
+  variant,
+  size,
+  fullWidth,
+  className,
+}: {
+  variant: ButtonVariant
+  size: ButtonSize
+  fullWidth: boolean
+  className?: string
+}) {
+  const baseStyles =
+    'inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50'
+  const variants = {
+    primary:
+      'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.98] motion-reduce:active:scale-100',
+    secondary:
+      'border border-border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground active:scale-[0.98] motion-reduce:active:scale-100',
+    tertiary:
+      'text-foreground hover:bg-accent hover:text-accent-foreground',
+  }
+  const sizes = {
+    sm: 'px-3 py-2 text-sm',
+    md: 'px-4 py-2 text-sm',
+    lg: 'px-6 py-3 text-base',
+  }
+
+  return `${baseStyles} ${variants[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className || ''}`
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -22,31 +63,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    const baseStyles =
-      'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed'
-
-    const variants = {
-      primary:
-        'bg-zinc-900 text-white hover:bg-zinc-800 focus:ring-zinc-500 active:scale-[0.98] dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-100',
-      secondary:
-        'border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-50 focus:ring-zinc-500 active:scale-[0.98] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800',
-      tertiary:
-        'text-zinc-900 hover:text-zinc-700 hover:underline focus:ring-zinc-500 dark:text-zinc-50 dark:hover:text-zinc-200',
-    }
-
-    const sizes = {
-      sm: 'px-3 py-1.5 text-sm',
-      md: 'px-4 py-2 text-sm',
-      lg: 'px-6 py-3 text-base',
-    }
-
-    const widthClass = fullWidth ? 'w-full' : ''
     const isDisabled = disabled || loading
 
     return (
       <button
         ref={ref}
-        className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthClass} ${className}`}
+        className={buttonClassNames({ variant, size, fullWidth, className })}
         disabled={isDisabled}
         {...props}
       >
@@ -59,3 +81,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
 Button.displayName = 'Button'
 
+export function ButtonLink({
+  href,
+  variant = 'primary',
+  size = 'md',
+  fullWidth = false,
+  className,
+  children,
+  ...props
+}: ButtonLinkProps) {
+  return (
+    <Link
+      href={href}
+      className={buttonClassNames({ variant, size, fullWidth, className })}
+      {...props}
+    >
+      {children}
+    </Link>
+  )
+}

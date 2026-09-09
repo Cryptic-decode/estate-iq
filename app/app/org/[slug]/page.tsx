@@ -1,13 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import {
+  Check,
+  Circle,
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
 import { getUserMemberships } from '@/app/actions/organizations'
 import { getOrgStats } from '@/app/actions/stats'
+import { getDueTodayRentPeriods } from '@/app/actions/follow-ups'
 import { AppLayout } from '@/components/app/app-layout'
 import { DailyBrief } from '@/components/app/dashboard/daily-brief'
-import { Building2, Home, Users, FileText, Wallet, Calendar, AlertCircle } from 'lucide-react'
+import { PageHeader } from '@/components/app/page-header'
+import { ButtonLink } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 
 export default async function OrgDashboardPage({
   params,
@@ -20,38 +25,26 @@ export default async function OrgDashboardPage({
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect('/signin')
-  }
+  if (!user) redirect('/signin')
 
-  // Get user's memberships
   const memberships = await getUserMemberships()
+  if (!memberships || memberships.length === 0) redirect('/app/onboarding')
 
-  if (!memberships || memberships.length === 0) {
-    redirect('/app/onboarding')
-  }
-
-  // Find membership for this org
-  const membership = memberships.find((m) => {
-    return m.organization?.slug === slug
-  })
-
+  const membership = memberships.find((item) => item.organization?.slug === slug)
   if (!membership) {
-    // User doesn't have access to this org, redirect to first org
-    const firstMembership = memberships[0]
-    const firstSlug = firstMembership.organization?.slug
+    const firstSlug = memberships[0]?.organization?.slug
     if (firstSlug) redirect(`/app/org/${firstSlug}`)
-    // Fallback to onboarding if org data is missing
     redirect('/app/onboarding')
   }
 
   const organization = membership.organization
   if (!organization) redirect('/app/onboarding')
 
-  const currency = organization.currency || 'NGN'
+  const [statsResult, dueTodayResult] = await Promise.all([
+    getOrgStats(slug),
+    getDueTodayRentPeriods(slug),
+  ])
 
-  // Fetch organization stats
-  const statsResult = await getOrgStats(slug)
   const stats = statsResult.data || {
     buildings: 0,
     units: 0,
@@ -61,262 +54,219 @@ export default async function OrgDashboardPage({
     rentPeriods: 0,
     overduePeriods: 0,
   }
+  const dueTodayCount = dueTodayResult.data?.length ?? 0
+  const currency = organization.currency || 'NGN'
 
-  const hasSetupGaps =
-    stats.buildings === 0 ||
-    stats.units === 0 ||
-    stats.tenants === 0 ||
-    stats.occupancies === 0 ||
-    stats.rentConfigs === 0 ||
-    stats.rentPeriods === 0
+  const setupSteps = [
+    {
+      label: 'Add a building',
+      description: 'Create the first property in your portfolio.',
+      complete: stats.buildings > 0,
+      href: 'buildings',
+    },
+    {
+      label: 'Create units',
+      description: 'Add the rentable spaces within your buildings.',
+      complete: stats.units > 0,
+      href: 'units',
+    },
+    {
+      label: 'Add tenants',
+      description: 'Create the tenant records you need to manage.',
+      complete: stats.tenants > 0,
+      href: 'tenants',
+    },
+    {
+      label: 'Assign occupancies',
+      description: 'Connect tenants to the units they occupy.',
+      complete: stats.occupancies > 0,
+      href: 'occupancies',
+    },
+    {
+      label: 'Configure rent',
+      description: 'Define amounts, cycles, and due dates.',
+      complete: stats.rentConfigs > 0,
+      href: 'rent-configs',
+    },
+    {
+      label: 'Generate rent periods',
+      description: 'Start tracking due, paid, and overdue rent.',
+      complete: stats.rentPeriods > 0,
+      href: 'rent-periods',
+    },
+  ]
 
-  // Generate contextual guidance based on what's missing
-  const getGuidanceMessages = () => {
-    const messages: Array<{ type: 'info' | 'warning'; text: string; action?: { label: string; href: string } }> = []
+  const completedSteps = setupSteps.filter((step) => step.complete).length
+  const setupComplete = completedSteps === setupSteps.length
+  const nextStep = setupSteps.find((step) => !step.complete)
+  const today = new Intl.DateTimeFormat('en-NG', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date())
 
-    if (stats.buildings === 0) {
-      messages.push({
-        type: 'info',
-        text: 'Start by creating your first building. Buildings are the foundation of your property portfolio.',
-        action: { label: 'Create building', href: `/app/org/${slug}/buildings` },
-      })
-    } else if (stats.units === 0) {
-      messages.push({
-        type: 'info',
-        text: `You have ${stats.buildings} building${stats.buildings > 1 ? 's' : ''} but no units yet. Create units to track individual rental spaces.`,
-        action: { label: 'Create unit', href: `/app/org/${slug}/units` },
-      })
-    } else if (stats.tenants === 0) {
-      messages.push({
-        type: 'info',
-        text: `You have ${stats.units} unit${stats.units > 1 ? 's' : ''} ready. Now add tenants to assign them to units.`,
-        action: { label: 'Add tenant', href: `/app/org/${slug}/tenants` },
-      })
-    } else if (stats.occupancies === 0) {
-      messages.push({
-        type: 'info',
-        text: `You have ${stats.tenants} tenant${stats.tenants > 1 ? 's' : ''} and ${stats.units} unit${stats.units > 1 ? 's' : ''}. Create occupancies to link tenants to units.`,
-        action: { label: 'Create occupancy', href: `/app/org/${slug}/occupancies` },
-      })
-    } else if (stats.rentConfigs === 0) {
-      messages.push({
-        type: 'info',
-        text: `You have ${stats.occupancies} occupancy${stats.occupancies > 1 ? 'ies' : ''}. Define rent schedules to set up payment terms.`,
-        action: { label: 'Create rent schedule', href: `/app/org/${slug}/rent-configs` },
-      })
-    } else if (stats.rentPeriods === 0) {
-      messages.push({
-        type: 'info',
-        text: `You have ${stats.rentConfigs} rent schedule${stats.rentConfigs > 1 ? 's' : ''}. Generate rent periods to start tracking payments.`,
-        action: { label: 'View rent periods', href: `/app/org/${slug}/rent-periods` },
-      })
-    }
-
-    // Avoid duplicating the "overdue" callout when the Daily Brief is present.
-    if (stats.overduePeriods > 0 && stats.rentPeriods === 0) {
-      messages.push({
-        type: 'warning',
-        text: `You have ${stats.overduePeriods} overdue rent period${stats.overduePeriods > 1 ? 's' : ''} that need attention.`,
-        action: { label: 'View overdue', href: `/app/org/${slug}/rent-periods` },
-      })
-    }
-
-    return messages
-  }
-
-  const guidanceMessages = getGuidanceMessages()
-
-  const quickLinks = [
-    { href: `buildings`, label: 'Buildings', icon: Building2, description: 'Manage your properties', count: stats.buildings },
-    { href: `units`, label: 'Units', icon: Home, description: 'Track individual units', count: stats.units },
-    { href: `tenants`, label: 'Tenants', icon: Users, description: 'Manage tenant information', count: stats.tenants },
-    { href: `occupancies`, label: 'Occupancies', icon: FileText, description: 'Assign tenants to units', count: stats.occupancies },
-    { href: `rent-configs`, label: 'Rent Schedules', icon: Wallet, description: 'Define rent schedules', count: stats.rentConfigs },
-    { href: `rent-periods`, label: 'Rent Periods', icon: Calendar, description: 'Track rent payments', count: stats.rentPeriods },
+  const portfolioMetrics = [
+    { label: 'Buildings', value: stats.buildings, href: 'buildings' },
+    { label: 'Units', value: stats.units, href: 'units' },
+    { label: 'Tenants', value: stats.tenants, href: 'tenants' },
+    { label: 'Active occupancies', value: stats.occupancies, href: 'occupancies' },
   ]
 
   return (
     <AppLayout orgSlug={slug} orgName={organization.name} userRole={membership.role}>
-      <div className="mx-auto w-full max-w-7xl px-4 py-8">
-        {/* Header / Hero */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="inline-flex items-center rounded-full border border-zinc-200 bg-white/60 px-3 py-1 text-xs font-medium text-zinc-700 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200">
-              Organization dashboard
-            </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-              {organization.name}
-            </h1>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-              Quick access to setup, rent schedules, and rent periods.
-            </p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Signed in as: {membership.role}</p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Link href={`/app/org/${slug}/rent-periods`} className="w-full sm:w-auto">
-              <Button variant="primary" size="md" className="w-full">
-                View rent periods
-              </Button>
-            </Link>
-            <Link href={`/app/org/${slug}/rent-configs`} className="w-full sm:w-auto">
-              <Button variant="secondary" size="md" className="w-full">
-                Configure rent
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Quick access */}
-        <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Quick access</div>
-            <div className="hidden text-xs text-zinc-500 dark:text-zinc-400 sm:block">
-              Jump to a section
-            </div>
-          </div>
-          <Card className="p-0">
-            <CardContent className="p-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                {quickLinks.map((link) => {
-                  const Icon = link.icon
-                  return (
-                    <Link
-                      key={link.href}
-                      href={`/app/org/${slug}/${link.href}`}
-                      className="group focus:outline-none"
-                    >
-                      <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-                            <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-200" />
-                          </div>
-                          <span className="truncate text-xs font-medium text-zinc-700 group-hover:text-zinc-900 dark:text-zinc-200 dark:group-hover:text-zinc-50">
-                            {link.label}
-                          </span>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-                          {link.count}
-                        </span>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Contextual Guidance */}
-        {guidanceMessages.length > 0 && (
-          <div className="mb-8 space-y-3">
-            {guidanceMessages.map((msg, idx) => (
-              <Card
-                key={idx}
-                className={`p-0 ${
-                  msg.type === 'warning'
-                    ? 'border-orange-200 bg-orange-50 dark:border-orange-900/50 dark:bg-orange-950/20'
-                    : ''
-                }`}
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
+        <PageHeader
+          eyebrow="Dashboard"
+          title={organization.name}
+          description={
+            setupComplete
+              ? 'See what needs attention across your rent operations today.'
+              : 'Complete your portfolio setup to start tracking rent with confidence.'
+          }
+          meta={`${today} · ${membership.role.toLowerCase()} access`}
+          actions={
+            <>
+              <ButtonLink href={`/app/org/${slug}/follow-ups`} fullWidth className="sm:w-auto">
+                Review follow-ups
+              </ButtonLink>
+              <ButtonLink
+                href={`/app/org/${slug}/payments`}
+                variant="secondary"
+                fullWidth
+                className="sm:w-auto"
               >
-                <CardContent className="flex items-start gap-3 p-4">
-                  {msg.type === 'warning' && (
-                    <AlertCircle className="h-5 w-5 shrink-0 text-orange-600 dark:text-orange-400" />
+                Record payment
+              </ButtonLink>
+            </>
+          }
+        />
+
+        <div className="mt-8 space-y-8">
+          {!setupComplete && (
+            <Card className="overflow-hidden p-0">
+              <div className="border-b border-border bg-secondary/60 px-5 py-5 sm:px-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">Set up your rent workspace</CardTitle>
+                    <CardDescription className="mt-1">
+                      {completedSteps} of {setupSteps.length} steps complete
+                    </CardDescription>
+                  </div>
+                  {nextStep && (
+                    <ButtonLink href={`/app/org/${slug}/${nextStep.href}`} size="sm">
+                      Continue setup
+                    </ButtonLink>
                   )}
-                  {msg.type === 'info' && (
-                    <div className="h-5 w-5 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700" />
-                  )}
-                  <div className="flex-1">
-                    <p
-                      className={`text-sm ${
-                        msg.type === 'warning'
-                          ? 'text-orange-800 dark:text-orange-200'
-                          : 'text-zinc-700 dark:text-zinc-200'
+                </div>
+                <div
+                  className="mt-4 h-2 overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-label="Workspace setup progress"
+                  aria-valuemin={0}
+                  aria-valuemax={setupSteps.length}
+                  aria-valuenow={completedSteps}
+                >
+                  <div
+                    className="h-full rounded-full bg-brand-brass transition-[width] motion-reduce:transition-none"
+                    style={{ width: `${(completedSteps / setupSteps.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <CardContent className="grid gap-2 p-3 md:grid-cols-2">
+                {setupSteps.map((step) => (
+                  <Link
+                    key={step.href}
+                    href={`/app/org/${slug}/${step.href}`}
+                    className="flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <span
+                      className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                        step.complete
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
-                      {msg.text}
-                    </p>
-                    {msg.action && (
-                      <div className="mt-2">
-                        <Link href={msg.action.href}>
-                          <Button variant="secondary" size="sm">
-                            {msg.action.label}
-                          </Button>
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+                      {step.complete ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium text-foreground">{step.label}</span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {step.description}
+                      </span>
+                    </span>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Daily brief (only once rent periods exist, to avoid clutter during setup) */}
-        {stats.rentPeriods > 0 && (
-          <div className="mb-8">
-            <DailyBrief
-              orgSlug={slug}
-              currency={currency}
-              initialOverdueCount={stats.overduePeriods}
-              initialDueTodayCount={0}
-            />
-          </div>
-        )}
+          {stats.rentPeriods > 0 && (
+            <section aria-labelledby="daily-brief-heading">
+              <h2 id="daily-brief-heading" className="sr-only">Daily rent brief</h2>
+              <DailyBrief
+                orgSlug={slug}
+                currency={currency}
+                initialOverdueCount={stats.overduePeriods}
+                initialDueTodayCount={dueTodayCount}
+              />
+            </section>
+          )}
 
-        {/* Helpful next steps */}
-        {(hasSetupGaps || membership.role !== 'OWNER') && (
-          <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card className="p-0">
-            <CardContent className="space-y-3 p-6">
+          <section aria-labelledby="portfolio-heading">
+            <div className="mb-3 flex items-end justify-between gap-4">
               <div>
-                <CardTitle className="text-base">Suggested setup order</CardTitle>
-                <CardDescription className="mt-1">
-                  Keep it simple: create your inventory first, then attach tenants, then define rent.
-                </CardDescription>
+                <h2 id="portfolio-heading" className="text-base font-semibold text-foreground">
+                  Portfolio overview
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your current operating footprint</p>
               </div>
-              <ol className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
-                <li>
-                  <span className="font-medium">1.</span> Add Buildings → create Units
-                </li>
-                <li>
-                  <span className="font-medium">2.</span> Add Tenants → create Occupancies
-                </li>
-                <li>
-                  <span className="font-medium">3.</span> Create Rent Schedules → track Rent Periods
-                </li>
-              </ol>
-            </CardContent>
-          </Card>
-
-          <Card className="p-0">
-            <CardContent className="space-y-3 p-6">
-              <div>
-                <CardTitle className="text-base">About your access</CardTitle>
-                <CardDescription className="mt-1">
-                  Your role controls what you can view and change within this organization.
-                </CardDescription>
-              </div>
-              <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-                Current role: <span className="font-semibold">{membership.role}</span>
-              </div>
-              {membership.role === 'OWNER' ? (
-                <Link href={`/app/org/${slug}/settings`} className="inline-block">
-                  <Button variant="secondary" size="sm">
-                    Manage settings
-                  </Button>
+            </div>
+            <div className="grid grid-cols-2 border-y border-border sm:grid-cols-4">
+              {portfolioMetrics.map((metric) => (
+                <Link
+                  key={metric.label}
+                  href={`/app/org/${slug}/${metric.href}`}
+                  className="border-border px-3 py-5 transition-colors hover:bg-accent/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring odd:border-r [&:nth-child(-n+2)]:border-b sm:border-r sm:border-b-0 sm:last:border-r-0"
+                >
+                  <p className="font-estate-serif text-3xl tabular-nums tracking-tight text-foreground sm:text-4xl">
+                    {metric.value}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-muted-foreground sm:text-sm">{metric.label}</p>
                 </Link>
-              ) : (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Need settings access? Ask an owner to update your role.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          </div>
-        )}
-    </div>
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="actions-heading">
+            <div className="mb-3">
+              <h2 id="actions-heading" className="text-base font-semibold text-foreground">
+                Common actions
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">Move directly into everyday rent operations</p>
+            </div>
+            <div className="grid border-y border-border lg:grid-cols-2">
+              {[
+                { label: 'Review rent periods', description: 'See due, paid, and overdue periods.', href: 'rent-periods' },
+                { label: 'Record a payment', description: 'Apply a payment to a rent period.', href: 'payments' },
+                { label: 'Manage follow-ups', description: 'Work through overdue tenant reminders.', href: 'follow-ups' },
+                { label: 'Configure rent', description: 'Update rent amounts, cycles, and due dates.', href: 'rent-configs' },
+              ].map((action, index) => (
+                <Link
+                  key={action.href}
+                  href={`/app/org/${slug}/${action.href}`}
+                  className="group grid grid-cols-[2.5rem_1fr] gap-3 border-b border-border px-2 py-5 transition-colors hover:bg-accent/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring last:border-b-0 lg:[&:nth-child(even)]:border-l lg:[&:nth-last-child(-n+2)]:border-b-0"
+                >
+                  <span className="font-estate-serif text-lg text-brand-brass">0{index + 1}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">{action.label}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{action.description}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
     </AppLayout>
   )
 }
-

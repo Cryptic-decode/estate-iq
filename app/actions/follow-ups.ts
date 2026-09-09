@@ -126,7 +126,7 @@ export async function getOverdueRentPeriods(orgSlug: string): Promise<{
   // Supabase nested selects can return arrays or objects depending on relationship type
   // Normalize to handle both cases (following pattern from organizations.ts)
   const transformed = (rentPeriods || [])
-    .map((rp: any) => {
+    .map((rp) => {
       // Normalize rent_configs (should be single object due to FK, but handle array case)
       const rawRentConfig = rp.rent_configs
       const rentConfig = Array.isArray(rawRentConfig) ? rawRentConfig[0] : rawRentConfig
@@ -339,7 +339,7 @@ export async function getDueTodayRentPeriods(orgSlug: string): Promise<{
   // Supabase nested selects can return arrays or objects depending on relationship type
   // Normalize to handle both cases (following pattern from organizations.ts)
   const transformed = (rentPeriods || [])
-    .map((rp: any) => {
+    .map((rp) => {
       // Normalize rent_configs (should be single object due to FK, but handle array case)
       const rawRentConfig = rp.rent_configs
       const rentConfig = Array.isArray(rawRentConfig) ? rawRentConfig[0] : rawRentConfig
@@ -559,7 +559,7 @@ export async function getUnpaidRentPeriodsByBuilding(orgSlug: string): Promise<{
 
   // Transform the nested structure and normalize
   const transformed = (rentPeriods || [])
-    .map((rp: any) => {
+    .map((rp) => {
       // Normalize rent_configs (should be single object due to FK, but handle array case)
       const rawRentConfig = rp.rent_configs
       const rentConfig = Array.isArray(rawRentConfig) ? rawRentConfig[0] : rawRentConfig
@@ -706,6 +706,73 @@ export type ReminderDraft = {
 }
 
 export type ReminderTone = 'friendly' | 'formal' | 'urgent'
+export type ReminderSendStatus = 'pending' | 'sent' | 'failed' | 'delivered' | 'bounced'
+
+export type ReminderSend = {
+  id: string
+  rent_period_id: string
+  tenant_id: string
+  user_id: string | null
+  channel: 'email'
+  to_address: string
+  subject: string | null
+  body: string
+  tone: ReminderTone
+  provider_message_id: string | null
+  status: ReminderSendStatus
+  error_message: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+const reminderSendStatuses: ReminderSendStatus[] = [
+  'pending',
+  'sent',
+  'failed',
+  'delivered',
+  'bounced',
+]
+
+export async function listReminderSends(
+  orgSlug: string,
+  options?: { status?: ReminderSendStatus; limit?: number }
+): Promise<{ data: ReminderSend[] | null; error: string | null }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { data: null, error: 'Not authenticated' }
+
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { data: null, error: orgRes.error }
+
+  const status = options?.status
+  if (status && !reminderSendStatuses.includes(status)) {
+    return { data: null, error: 'Invalid reminder status' }
+  }
+
+  const limit = Math.min(Math.max(options?.limit ?? 100, 1), 200)
+  let query = supabase
+    .from('reminder_sends')
+    .select(
+      'id, rent_period_id, tenant_id, user_id, channel, to_address, subject, body, tone, provider_message_id, status, error_message, sent_at, created_at'
+    )
+    .eq('organization_id', orgRes.data.organizationId)
+    .eq('channel', 'email')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (status) query = query.eq('status', status)
+
+  const { data, error } = await query
+  if (error) {
+    console.error('Error fetching reminder history:', error)
+    return { data: null, error: 'Failed to fetch reminder history' }
+  }
+
+  return { data: (data ?? []) as ReminderSend[], error: null }
+}
 
 /**
  * Generate reminder draft (email/SMS) for a rent period
@@ -974,7 +1041,7 @@ export async function sendReminderEmail(
   }
 
   // Normalize nested select shape (Supabase can return arrays depending on relationship inference)
-  const rawRentConfig = (rentPeriod as any).rent_configs
+  const rawRentConfig = rentPeriod.rent_configs
   const rentConfig = Array.isArray(rawRentConfig) ? rawRentConfig[0] : rawRentConfig
 
   if (!rentConfig) {
@@ -1009,25 +1076,25 @@ export async function sendReminderEmail(
     return { success: false, error: 'Tenant not found for this rent period' }
   }
 
-  if ((rentPeriod as any).status === 'PAID') {
+  if (rentPeriod.status === 'PAID') {
     return { success: false, error: 'Cannot send a reminder for a paid rent period' }
   }
 
   const period = {
-    id: (rentPeriod as any).id as string,
-    organization_id: (rentPeriod as any).organization_id as string,
-    rent_config_id: (rentPeriod as any).rent_config_id as string,
-    period_start: (rentPeriod as any).period_start as string,
-    period_end: (rentPeriod as any).period_end as string,
-    due_date: (rentPeriod as any).due_date as string,
-    status: ((rentPeriod as any).status as 'OVERDUE' | 'DUE') ?? 'DUE',
-    days_overdue: Number((rentPeriod as any).days_overdue ?? 0),
-    created_at: (rentPeriod as any).created_at as string,
-    updated_at: (rentPeriod as any).updated_at as string,
+    id: rentPeriod.id,
+    organization_id: rentPeriod.organization_id,
+    rent_config_id: rentPeriod.rent_config_id,
+    period_start: rentPeriod.period_start,
+    period_end: rentPeriod.period_end,
+    due_date: rentPeriod.due_date,
+    status: rentPeriod.status as 'OVERDUE' | 'DUE',
+    days_overdue: Number(rentPeriod.days_overdue ?? 0),
+    created_at: rentPeriod.created_at,
+    updated_at: rentPeriod.updated_at,
     rent_config: {
       id: String(rentConfig.id),
       amount: Number(rentConfig.amount ?? 0),
-      cycle: rentConfig.cycle as any,
+      cycle: rentConfig.cycle as OverdueRentPeriod['rent_config']['cycle'],
       due_day: Number(rentConfig.due_day ?? 0),
       occupancy_id: String(rentConfig.occupancy_id),
       occupancy: {
@@ -1146,10 +1213,7 @@ export async function sendReminderEmail(
   }
 }
 
-/**
- * Send batch reminder email for multiple rent periods (same tenant)
- * Note: This function sends one email per tenant with all their periods listed
- */
+/** Send one tracked email for each selected rent period. */
 export async function sendBatchReminderEmail(
   orgSlug: string,
   rentPeriodIds: string[],
@@ -1179,25 +1243,18 @@ export async function sendBatchReminderEmail(
     return { success: false, error: 'Email service is not configured. Please contact support.', sentCount: 0, failedCount: 0 }
   }
 
-  if (!rentPeriodIds || rentPeriodIds.length === 0) {
+  const uniqueRentPeriodIds = Array.from(new Set(rentPeriodIds.filter(Boolean)))
+  if (uniqueRentPeriodIds.length === 0) {
     return { success: false, error: 'No rent periods provided', sentCount: 0, failedCount: 0 }
   }
-
-  // Get organization currency
-  const orgData = await getOrganizationBySlug(orgSlug)
-  if (orgData.error || !orgData.data) {
-    return { success: false, error: orgData.error || 'Failed to fetch organization details', sentCount: 0, failedCount: 0 }
+  if (uniqueRentPeriodIds.length > 25) {
+    return { success: false, error: 'Select no more than 25 rent periods at a time', sentCount: 0, failedCount: 0 }
   }
-
-  const currency = orgData.data.currency || 'NGN'
-  const orgName = orgData.data.name
 
   let sentCount = 0
   let failedCount = 0
 
-  // Send individual reminders for each period (simpler approach)
-  // In the future, we can optimize to group by tenant and send one email per tenant
-  for (const rentPeriodId of rentPeriodIds) {
+  for (const rentPeriodId of uniqueRentPeriodIds) {
     const result = await sendReminderEmail(orgSlug, rentPeriodId, tone)
     if (result.success) {
       sentCount++
@@ -1214,3 +1271,38 @@ export async function sendBatchReminderEmail(
   }
 }
 
+export async function retryReminderEmail(
+  orgSlug: string,
+  reminderSendId: string
+): Promise<{ success: boolean; error: string | null; reminderSendId?: string }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { success: false, error: 'Not authenticated' }
+
+  const orgRes = await getOrgContextForUser(supabase, user.id, orgSlug)
+  if (orgRes.error || !orgRes.data) return { success: false, error: orgRes.error }
+
+  const { data: reminder, error } = await supabase
+    .from('reminder_sends')
+    .select('rent_period_id, tone, status')
+    .eq('id', reminderSendId)
+    .eq('organization_id', orgRes.data.organizationId)
+    .eq('channel', 'email')
+    .maybeSingle()
+
+  if (error || !reminder) {
+    return { success: false, error: 'Reminder attempt not found or access denied' }
+  }
+  if (reminder.status !== 'failed' && reminder.status !== 'bounced') {
+    return { success: false, error: 'Only failed or bounced reminders can be retried' }
+  }
+
+  return sendReminderEmail(
+    orgSlug,
+    String(reminder.rent_period_id),
+    reminder.tone as ReminderTone
+  )
+}
