@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="EstateIQ">
+  <rect width="256" height="256" rx="56" fill="#123a32"/>
+  <path d="M54 208V79l74-35 74 35v129M82 208V96l46-22 46 22v112M128 75v101M45 208h166" fill="none" stroke="#f4f1e8" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="174" cy="96" r="15" fill="#b48a4a"/>
+</svg>
