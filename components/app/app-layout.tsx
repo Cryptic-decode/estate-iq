@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { ReactNode, useEffect, useRef, useState, useTransition } from 'react'
+import { ReactNode, useEffect, useId, useRef, useState, useTransition } from 'react'
 import { signOut } from '@/app/actions/auth'
 import {
+  ChevronDown,
   Menu,
   Moon,
   Sun,
@@ -27,17 +28,14 @@ type NavItem = {
   label: string
 }
 
-type NavGroup = {
-  label: string
-  items: NavItem[]
-}
+type NavEntry =
+  | { type: 'item'; item: NavItem }
+  | { type: 'group'; label: string; items: NavItem[] }
 
-const navGroups: NavGroup[] = [
+const navigationEntries: NavEntry[] = [
+  { type: 'item', item: { href: '', label: 'Dashboard' } },
   {
-    label: 'Workspace',
-    items: [{ href: '', label: 'Dashboard' }],
-  },
-  {
+    type: 'group',
     label: 'Portfolio',
     items: [
       { href: 'buildings', label: 'Buildings' },
@@ -46,11 +44,9 @@ const navGroups: NavGroup[] = [
       { href: 'occupancies', label: 'Occupancies' },
     ],
   },
+  { type: 'item', item: { href: 'maintenance', label: 'Maintenance' } },
   {
-    label: 'Service',
-    items: [{ href: 'maintenance', label: 'Maintenance' }],
-  },
-  {
+    type: 'group',
     label: 'Rent operations',
     items: [
       { href: 'rent-configs', label: 'Rent schedules' },
@@ -62,6 +58,7 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    type: 'group',
     label: 'Insights',
     items: [
       { href: 'reports', label: 'Reports overview' },
@@ -73,88 +70,203 @@ const navGroups: NavGroup[] = [
   },
 ]
 
+const defaultOpenGroups = ['Portfolio', 'Rent operations']
+const navigationPreferenceKey = 'estateiq:sidebar-open-groups'
+const settingsNavItem = { href: 'settings', label: 'Settings' }
+const validGroupLabels = navigationEntries.flatMap((entry) =>
+  entry.type === 'group' ? [entry.label] : []
+)
+
+function isNavItemActive(href: string, currentPath?: string) {
+  if (href === '') return !currentPath
+  if (href === 'reports') return currentPath === href
+  return currentPath === href || Boolean(currentPath?.startsWith(`${href}/`))
+}
+
+function getActiveGroupLabel(currentPath?: string) {
+  for (const entry of navigationEntries) {
+    if (entry.type === 'group' && entry.items.some((item) => isNavItemActive(item.href, currentPath))) {
+      return entry.label
+    }
+  }
+
+  return undefined
+}
+
+function withActiveGroup(groups: string[], currentPath?: string) {
+  const activeGroup = getActiveGroupLabel(currentPath)
+  return activeGroup && !groups.includes(activeGroup) ? [...groups, activeGroup] : groups
+}
+
+function NavigationLink({
+  item,
+  orgSlug,
+  currentPath,
+  onNavigate,
+}: {
+  item: NavItem
+  orgSlug: string
+  currentPath?: string
+  onNavigate?: () => void
+}) {
+  const active = isNavItemActive(item.href, currentPath)
+  const href = item.href ? `/app/org/${orgSlug}/${item.href}` : `/app/org/${orgSlug}`
+
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
+      className={`flex min-h-10 items-center border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
+        active
+          ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
+          : 'border-transparent text-muted-foreground hover:border-sidebar-border hover:text-sidebar-accent-foreground'
+      }`}
+    >
+      {item.label}
+    </Link>
+  )
+}
+
+function AccountAccess({ userRole }: { userRole?: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium text-muted-foreground">Account access</p>
+      <p className="text-sm capitalize">{userRole?.toLowerCase() ?? 'member'}</p>
+    </div>
+  )
+}
+
 function Navigation({
   orgSlug,
   currentPath,
-  userRole,
+  openGroups,
+  onToggleGroup,
   onNavigate,
 }: {
   orgSlug: string
   currentPath?: string
-  userRole?: string
+  openGroups: string[]
+  onToggleGroup: (label: string) => void
   onNavigate?: () => void
 }) {
-  const isActive = (href: string) => {
-    if (href === '') return !currentPath
-    if (href === 'reports') return currentPath === href
-    return currentPath === href || Boolean(currentPath?.startsWith(`${href}/`))
-  }
+  const navigationId = useId().replaceAll(':', '')
 
   return (
-    <nav aria-label="Primary navigation" className="space-y-6">
-      {navGroups.map((group) => (
-        <div key={group.label}>
-          <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {group.label}
-          </p>
-          <div className="space-y-1">
-            {group.items.map((item) => {
-              const active = isActive(item.href)
-              const href = item.href
-                ? `/app/org/${orgSlug}/${item.href}`
-                : `/app/org/${orgSlug}`
+    <nav aria-label="Primary navigation" className="space-y-2">
+      {navigationEntries.map((entry) => {
+        if (entry.type === 'item') {
+          return (
+            <NavigationLink
+              key={entry.item.href}
+              item={entry.item}
+              orgSlug={orgSlug}
+              currentPath={currentPath}
+              onNavigate={onNavigate}
+            />
+          )
+        }
 
-              return (
-                <Link
-                  key={item.href}
-                  href={href}
-                  onClick={onNavigate}
-                  aria-current={active ? 'page' : undefined}
-                  className={`flex min-h-10 items-center border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
-                    active
-                      ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'border-transparent text-muted-foreground hover:border-sidebar-border hover:text-sidebar-accent-foreground'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                </Link>
-              )
-            })}
+        const open = openGroups.includes(entry.label)
+        const containsActivePage = entry.items.some((item) => isNavItemActive(item.href, currentPath))
+        const contentId = `${navigationId}-${entry.label.toLowerCase().replaceAll(' ', '-')}`
+
+        return (
+          <div key={entry.label}>
+            <button
+              type="button"
+              onClick={() => onToggleGroup(entry.label)}
+              aria-expanded={open}
+              aria-controls={contentId}
+              className={`flex min-h-10 w-full items-center justify-between border-l-2 px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
+                containsActivePage && !open
+                  ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'border-transparent text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
+              }`}
+            >
+              <span>{entry.label}</span>
+              <ChevronDown
+                aria-hidden="true"
+                className={`h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+              />
+            </button>
+            <div
+              id={contentId}
+              aria-hidden={!open}
+              inert={!open}
+              className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ${
+                open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div className="space-y-1 py-1 pl-2">
+                  {entry.items.map((item) => (
+                    <NavigationLink
+                      key={item.href}
+                      item={item}
+                      orgSlug={orgSlug}
+                      currentPath={currentPath}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
-
-      {userRole === 'OWNER' && (
-        <div>
-          <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Organization
-          </p>
-          <Link
-            href={`/app/org/${orgSlug}/settings`}
-            onClick={onNavigate}
-            aria-current={currentPath === 'settings' ? 'page' : undefined}
-            className={`flex min-h-10 items-center border-l-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar ${
-              currentPath === 'settings'
-                ? 'border-brand-brass bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'border-transparent text-muted-foreground hover:border-sidebar-border hover:text-sidebar-accent-foreground'
-            }`}
-          >
-            <span>Settings</span>
-          </Link>
-        </div>
-      )}
+        )
+      })}
     </nav>
   )
 }
 
 export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }: AppLayoutProps) {
   const { themeLabel, themePressed, toggleTheme } = useThemeControl()
+  const initialPathRef = useRef(currentPath)
+  const [openGroups, setOpenGroups] = useState(() => withActiveGroup(defaultOpenGroups, currentPath))
+  const [navigationPreferencesLoaded, setNavigationPreferencesLoaded] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [showSignOutDialog, setShowSignOutDialog] = useState(false)
   const [isPending, startTransition] = useTransition()
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const mobileNavRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    let storedGroups: string[] = []
+    let hasStoredPreference = false
+
+    try {
+      const storedValue = window.localStorage.getItem(navigationPreferenceKey)
+      const parsedValue: unknown = storedValue ? JSON.parse(storedValue) : null
+      if (Array.isArray(parsedValue)) {
+        hasStoredPreference = true
+        storedGroups = Array.from(
+          new Set(
+            parsedValue.filter(
+              (group): group is string =>
+                typeof group === 'string' && validGroupLabels.includes(group)
+            )
+          )
+        )
+      }
+    } catch {
+      storedGroups = []
+    }
+
+    const preferredGroups = hasStoredPreference ? storedGroups : defaultOpenGroups
+    setOpenGroups(withActiveGroup(preferredGroups, initialPathRef.current))
+    setNavigationPreferencesLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    if (!navigationPreferencesLoaded) return
+
+    try {
+      window.localStorage.setItem(navigationPreferenceKey, JSON.stringify(openGroups))
+    } catch {
+      // Navigation remains usable when browser storage is unavailable.
+    }
+  }, [navigationPreferencesLoaded, openGroups])
 
   useEffect(() => {
     if (!mobileNavOpen) return
@@ -205,6 +317,12 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
     })
   }
 
+  const toggleNavigationGroup = (label: string) => {
+    setOpenGroups((groups) =>
+      groups.includes(label) ? groups.filter((group) => group !== label) : [...groups, label]
+    )
+  }
+
   return (
     <>
       <div className="min-h-screen bg-background text-foreground">
@@ -219,14 +337,16 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
             <p className="mt-3 truncate text-xs text-muted-foreground">{orgName}</p>
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            <Navigation orgSlug={orgSlug} currentPath={currentPath} userRole={userRole} />
+            <Navigation
+              orgSlug={orgSlug}
+              currentPath={currentPath}
+              openGroups={openGroups}
+              onToggleGroup={toggleNavigationGroup}
+            />
           </div>
           <div className="border-t border-sidebar-border p-3">
             <div className="mb-2 flex items-center justify-between rounded-lg px-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{orgName}</p>
-                <p className="text-xs capitalize text-muted-foreground">{userRole?.toLowerCase()}</p>
-              </div>
+              <AccountAccess userRole={userRole} />
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -238,6 +358,13 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
                 <Moon className="absolute h-4 w-4 scale-0 dark:scale-100" />
               </button>
             </div>
+            {userRole === 'OWNER' && (
+              <NavigationLink
+                item={settingsNavItem}
+                orgSlug={orgSlug}
+                currentPath={currentPath}
+              />
+            )}
             <Button
               type="button"
               variant="tertiary"
@@ -321,11 +448,25 @@ export function AppLayout({ orgSlug, orgName, currentPath, userRole, children }:
               <Navigation
                 orgSlug={orgSlug}
                 currentPath={currentPath}
-                userRole={userRole}
+                openGroups={openGroups}
+                onToggleGroup={toggleNavigationGroup}
                 onNavigate={() => setMobileNavOpen(false)}
               />
             </div>
             <div className="border-t border-sidebar-border p-4">
+              <div className="mb-3 px-3">
+                <AccountAccess userRole={userRole} />
+              </div>
+              {userRole === 'OWNER' && (
+                <div className="mb-2">
+                  <NavigationLink
+                    item={settingsNavItem}
+                    orgSlug={orgSlug}
+                    currentPath={currentPath}
+                    onNavigate={() => setMobileNavOpen(false)}
+                  />
+                </div>
+              )}
               <Button
                 type="button"
                 variant="secondary"
